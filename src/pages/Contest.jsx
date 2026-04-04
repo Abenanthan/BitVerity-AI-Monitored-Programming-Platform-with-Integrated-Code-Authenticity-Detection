@@ -7,11 +7,11 @@ import {
 import DifficultyBadge from '../components/DifficultyBadge';
 import ContestTimer from '../components/ContestTimer';
 import LanguageSelector from '../components/LanguageSelector';
-import BehaviorMonitor from '../components/BehaviorMonitor';
 import VerdictBanner from '../components/VerdictBanner';
 import { STARTER_CODE, ACTIVE_CONTESTS } from '../utils/constants';
 import { api } from '../utils/api';
 import { useSocket } from '../hooks/useSocket';
+import { useBehaviorMonitor } from '../hooks/useBehaviorMonitor';
 
 // Lazy-load Monaco
 const MonacoEditor = lazy(() => import('@monaco-editor/react'));
@@ -63,7 +63,7 @@ export default function Contest() {
   const [openExamples, setOpenExamples] = useState([0]);
 
   // Behavior monitor
-  const [behaviorState, setBehaviorState] = useState({ events: [], hasWarning: false });
+  const behaviorEvents = useBehaviorMonitor();
   const [pasteFlash, setPasteFlash]       = useState(false);
   const editorWrapperRef = useRef(null);
 
@@ -123,12 +123,7 @@ export default function Contest() {
     }
   }
 
-  const handleBehaviorUpdate = useCallback((state) => {
-    setBehaviorState(state);
-  }, []);
-
   function handleEditorPaste() {
-    behaviorState.registerPaste?.();
     setPasteFlash(true);
     setTimeout(() => setPasteFlash(false), 600);
   }
@@ -143,8 +138,6 @@ export default function Contest() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: 'var(--bg-base)', fontFamily: 'Inter, sans-serif', overflow: 'hidden' }}>
-      <BehaviorMonitor onUpdate={handleBehaviorUpdate} />
-
       {/* ---- TOP BAR ---- */}
       <header style={{
         height: 48, background: 'var(--bg-surface)',
@@ -588,15 +581,15 @@ export default function Contest() {
         <span>Spaces: 4</span>
         <span>UTF-8</span>
         <div style={{ flex: 1 }} />
-        {behaviorState.hasWarning && (
+        {behaviorEvents && behaviorEvents.length > 0 && (
           <div
             className="behavior-dot"
-            title={`${behaviorState.events.length} behavior event(s) detected`}
+            title={`${behaviorEvents.length} behavior event(s) detected`}
             style={{ display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer' }}
           >
             <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#F59E0B', boxShadow: '0 0 6px rgba(245,158,11,0.6)' }} />
             <span style={{ color: '#F59E0B', fontSize: 11 }}>
-              <AlertTriangle size={10} style={{ display: 'inline' }} /> {behaviorState.events.length} behavior event{behaviorState.events.length !== 1 ? 's' : ''}
+              <AlertTriangle size={10} style={{ display: 'inline' }} /> {behaviorEvents.length} behavior event{behaviorEvents.length !== 1 ? 's' : ''}
             </span>
           </div>
         )}

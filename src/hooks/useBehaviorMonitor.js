@@ -1,41 +1,50 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef } from 'react';
 
-export function useBehaviorMonitor() {
-  const [events, setEvents]         = useState([]);
-  const [hasWarning, setHasWarning] = useState(false);
-  const startTime                   = useRef(Date.now());
-
-  const addEvent = useCallback((type, detail = '') => {
-    const elapsed = Math.floor((Date.now() - startTime.current) / 1000);
-    const mins    = Math.floor(elapsed / 60).toString().padStart(2, '0');
-    const secs    = (elapsed % 60).toString().padStart(2, '0');
-    const entry   = { type, detail, time: `${mins}:${secs}`, ts: Date.now() };
-    setEvents(prev => [...prev, entry]);
-    setHasWarning(true);
-  }, []);
+export const useBehaviorMonitor = () => {
+  const events = useRef([]);
 
   useEffect(() => {
-    const onBlur  = () => addEvent('blur',  'Window blur');
-    const onFocus = () => {};
-    const onVis   = () => {
-      if (document.visibilityState === 'hidden') addEvent('tab', 'Tab switch');
+    // Tab switch detection
+    const onVisibility = () => {
+      if (document.hidden) {
+        events.current.push({
+          type: "tab_switch",
+          time: Date.now(),
+          direction: "away"
+        });
+      } else {
+        events.current.push({
+          type: "tab_switch",
+          time: Date.now(),
+          direction: "return"
+        });
+      }
     };
 
-    window.addEventListener('blur',              onBlur);
-    window.addEventListener('focus',             onFocus);
-    document.addEventListener('visibilitychange', onVis);
+    // Window blur (other app opened)
+    const onBlur = () => events.current.push({
+      type: "window_blur", time: Date.now()
+    });
+
+    // Paste detection
+    const onPaste = (e) => {
+      events.current.push({
+        type: "paste_event",
+        time: Date.now(),
+        charCount: e.clipboardData ? e.clipboardData.getData("text").length : 0
+      });
+    };
+
+    document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("blur", onBlur);
+    document.addEventListener("paste", onPaste);
 
     return () => {
-      window.removeEventListener('blur',              onBlur);
-      window.removeEventListener('focus',             onFocus);
-      document.removeEventListener('visibilitychange', onVis);
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("blur", onBlur);
+      document.removeEventListener("paste", onPaste);
     };
-  }, [addEvent]);
+  }, []);
 
-  // Paste detection is added to editor wrapper via onPaste prop
-  const registerPaste = useCallback(() => {
-    addEvent('paste', 'Paste event detected');
-  }, [addEvent]);
-
-  return { events, hasWarning, registerPaste };
-}
+  return events.current;
+};
