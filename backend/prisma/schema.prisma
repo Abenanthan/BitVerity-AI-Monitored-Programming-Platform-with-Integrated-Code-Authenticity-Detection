@@ -1,0 +1,268 @@
+// =============================================================
+//  CodeVerify — Prisma Schema
+//  Database: PostgreSQL
+//  ORM:      Prisma
+//  Services: Node.js API  +  Python FastAPI (shared DB)
+// =============================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────────────────────────
+//  ENUMS
+// ─────────────────────────────────────────────
+
+enum Difficulty {
+  EASY
+  MEDIUM
+  HARD
+}
+
+enum Verdict {
+  PENDING
+  ACCEPTED
+  WRONG_ANSWER
+  TIME_LIMIT_EXCEEDED
+  MEMORY_LIMIT_EXCEEDED
+  COMPILE_ERROR
+  RUNTIME_ERROR
+}
+
+enum AiVerdict {
+  HUMAN
+  SUSPICIOUS
+  AI_GENERATED
+}
+
+// ─────────────────────────────────────────────
+//  TABLE 1 — users
+// ─────────────────────────────────────────────
+
+model User {
+  id           String   @id @default(uuid()) @db.Uuid
+  email        String   @unique @db.VarChar(255)
+  username     String   @unique @db.VarChar(50)
+  passwordHash String   @db.Text
+  githubId     String?  @unique @db.VarChar(100)
+  avatarUrl    String?  @db.Text
+  trustScore   Float    @default(100.0)
+  totalSolved  Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // Relations
+  submissions  Submission[]
+  contestUsers ContestUser[]
+  styleProfile StyleProfile?
+
+  @@index([email])
+  @@index([username])
+  @@map("users")
+}
+
+// ─────────────────────────────────────────────
+//  TABLE 2 — problems
+// ─────────────────────────────────────────────
+
+model Problem {
+  id             String     @id @default(uuid()) @db.Uuid
+  title          String     @db.VarChar(255)
+  slug           String     @unique @db.VarChar(255)
+  description    String     @db.Text
+  difficulty     Difficulty
+  topics         String[]   @db.Text
+  constraints    String     @db.Text
+  sampleInput    String     @db.Text
+  sampleOutput   String     @db.Text
+  timeLimit      Int        // milliseconds
+  memoryLimit    Int        // megabytes
+  totalAttempts  Int        @default(0)
+  totalAccepted  Int        @default(0)
+  createdAt      DateTime   @default(now())
+
+  // Relations
+  testCases       TestCase[]
+  submissions     Submission[]
+  contestProblems ContestProblem[]
+
+  @@index([slug])
+  @@index([difficulty])
+  @@map("problems")
+}
+
+// ─────────────────────────────────────────────
+//  TABLE 3 — test_cases
+// ─────────────────────────────────────────────
+
+model TestCase {
+  id        String  @id @default(uuid()) @db.Uuid
+  problemId String  @db.Uuid
+  input     String  @db.Text
+  output    String  @db.Text
+  isHidden  Boolean @default(true)
+
+  // Relations
+  problem Problem @relation(fields: [problemId], references: [id], onDelete: Cascade)
+
+  @@index([problemId])
+  @@map("test_cases")
+}
+
+// ─────────────────────────────────────────────
+//  TABLE 4 — submissions
+// ─────────────────────────────────────────────
+
+model Submission {
+  id            String     @id @default(uuid()) @db.Uuid
+  userId        String     @db.Uuid
+  problemId     String     @db.Uuid
+  contestId     String?    @db.Uuid
+  code          String     @db.Text          // full source code
+  language      String     @db.VarChar(20)   // python | java | cpp | javascript
+  verdict       Verdict    @default(PENDING)
+  runtime       Int?                         // milliseconds
+  memory        Int?                         // kilobytes
+  aiScore       Float?                       // 0.0 – 1.0
+  aiVerdict     AiVerdict?
+  behaviorLogId String?    @db.Uuid          // reference to Redis / behaviour session
+  submittedAt   DateTime   @default(now())
+
+  // Relations
+  user            User             @relation(fields: [userId],    references: [id], onDelete: Cascade)
+  problem         Problem          @relation(fields: [problemId], references: [id], onDelete: Cascade)
+  contest         Contest?         @relation(fields: [contestId], references: [id], onDelete: SetNull)
+  detectionReport DetectionReport?
+
+  @@index([userId])
+  @@index([problemId])
+  @@index([contestId])
+  @@index([verdict])
+  @@index([aiVerdict])
+  @@index([submittedAt])
+  @@map("submissions")
+}
+
+// ─────────────────────────────────────────────
+//  TABLE 5 — detection_reports
+// ─────────────────────────────────────────────
+
+model DetectionReport {
+  id                  String     @id @default(uuid()) @db.Uuid
+  submissionId        String     @unique @db.Uuid
+  behavioralScore     Float                        // 0.0 – 1.0
+  codePatternScore    Float                        // 0.0 – 1.0
+  fingerprintScore    Float                        // 0.0 – 1.0
+  explainabilityScore Float                        // 0.0 – 1.0
+  finalAiScore        Float                        // weighted aggregate
+  aiVerdict           AiVerdict
+  flags               Json       @db.JsonB         // array of flag objects
+  trustScoreDelta     Float                        // positive = trust gained, negative = trust lost
+  createdAt           DateTime   @default(now())
+
+  // Relations
+  submission Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+
+  @@index([submissionId])
+  @@index([aiVerdict])
+  @@index([finalAiScore])
+  @@map("detection_reports")
+}
+
+// ─────────────────────────────────────────────
+//  TABLE 6 — style_profiles
+//  One profile per user — updated incrementally
+//  as more human-verified submissions accumulate.
+// ─────────────────────────────────────────────
+
+model StyleProfile {
+  id                 String   @id @default(uuid()) @db.Uuid
+  userId             String   @unique @db.Uuid
+  avgLineLength      Float    @default(0)
+  camelCaseRatio     Float    @default(0)   // 0.0 – 1.0
+  snakeCaseRatio     Float    @default(0)   // 0.0 – 1.0
+  docstringFrequency Float    @default(0)   // avg docstrings per function
+  commentFrequency   Float    @default(0)   // avg comment lines per 100 lines
+  avgFuncLength      Float    @default(0)   // average lines per function
+  preferredLoops     String   @default("for") @db.VarChar(10) // "for" | "while"
+  embeddingVector    Float[]  // CodeBERT 768-dim normalised embedding
+  sampleCount        Int      @default(0)   // number of submissions used to build profile
+  updatedAt          DateTime @updatedAt
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("style_profiles")
+}
+
+// ─────────────────────────────────────────────
+//  TABLE 7 — contests
+// ─────────────────────────────────────────────
+
+model Contest {
+  id          String   @id @default(uuid()) @db.Uuid
+  title       String   @db.VarChar(255)
+  description String   @db.Text
+  startTime   DateTime
+  endTime     DateTime
+  isPublic    Boolean  @default(true)
+  createdBy   String   @db.Uuid           // userId of organiser
+
+  // Relations
+  contestUsers ContestUser[]
+  problems     ContestProblem[]
+  submissions  Submission[]
+
+  @@index([startTime])
+  @@index([endTime])
+  @@index([createdBy])
+  @@map("contests")
+}
+
+// ─────────────────────────────────────────────
+//  TABLE 8 — contest_users  (join table)
+// ─────────────────────────────────────────────
+
+model ContestUser {
+  userId    String   @db.Uuid
+  contestId String   @db.Uuid
+  score     Int      @default(0)
+  rank      Int?
+  joinedAt  DateTime @default(now())
+
+  // Relations
+  user    User    @relation(fields: [userId],    references: [id], onDelete: Cascade)
+  contest Contest @relation(fields: [contestId], references: [id], onDelete: Cascade)
+
+  @@id([userId, contestId])
+  @@index([contestId])
+  @@index([score])
+  @@map("contest_users")
+}
+
+// ─────────────────────────────────────────────
+//  TABLE 9 — contest_problems  (join table)
+//  Allows a problem to appear in multiple contests
+//  with an independent point value per contest.
+// ─────────────────────────────────────────────
+
+model ContestProblem {
+  contestId String @db.Uuid
+  problemId String @db.Uuid
+  points    Int    @default(100)
+  orderIndex Int   @default(0)   // display order within the contest
+
+  // Relations
+  contest Contest @relation(fields: [contestId], references: [id], onDelete: Cascade)
+  problem Problem @relation(fields: [problemId], references: [id], onDelete: Cascade)
+
+  @@id([contestId, problemId])
+  @@index([contestId])
+  @@map("contest_problems")
+}
