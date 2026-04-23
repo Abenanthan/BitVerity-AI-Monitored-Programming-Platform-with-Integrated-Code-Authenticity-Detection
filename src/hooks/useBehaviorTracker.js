@@ -71,8 +71,12 @@ export function useBehaviorTracker() {
       push(document.hidden ? 'tab_hidden' : 'tab_visible', {});
     };
 
-    const onBlur  = () => push('window_blur',  {});
-    const onFocus = () => push('window_focus', {});
+    const onBlur  = (e) => {
+      if (e.target === window || e.target === document) push('window_blur', {});
+    };
+    const onFocus = (e) => {
+      if (e.target === window || e.target === document) push('window_focus', {});
+    };
 
     // ── Right-click (context menu) ───────────────────────────────
     const onContextMenu = () => push('context_menu', {});
@@ -89,24 +93,24 @@ export function useBehaviorTracker() {
       }, 100);
     };
 
-    document.addEventListener('visibilitychange', onVisibility);
-    window.addEventListener('keydown',     onKey);
-    window.addEventListener('paste',       onPaste);
-    window.addEventListener('copy',        onCopy);
-    window.addEventListener('blur',        onBlur);
-    window.addEventListener('focus',       onFocus);
-    window.addEventListener('contextmenu', onContextMenu);
-    window.addEventListener('mouseup',     onMouseUp);
+    document.addEventListener('visibilitychange', onVisibility, true);
+    window.addEventListener('keydown',     onKey, true);
+    window.addEventListener('paste',       onPaste, true);
+    window.addEventListener('copy',        onCopy, true);
+    window.addEventListener('blur',        onBlur, true);
+    window.addEventListener('focus',       onFocus, true);
+    window.addEventListener('contextmenu', onContextMenu, true);
+    window.addEventListener('mouseup',     onMouseUp, true);
 
     return () => {
-      document.removeEventListener('visibilitychange', onVisibility);
-      window.removeEventListener('keydown',     onKey);
-      window.removeEventListener('paste',       onPaste);
-      window.removeEventListener('copy',        onCopy);
-      window.removeEventListener('blur',        onBlur);
-      window.removeEventListener('focus',       onFocus);
-      window.removeEventListener('contextmenu', onContextMenu);
-      window.removeEventListener('mouseup',     onMouseUp);
+      document.removeEventListener('visibilitychange', onVisibility, true);
+      window.removeEventListener('keydown',     onKey, true);
+      window.removeEventListener('paste',       onPaste, true);
+      window.removeEventListener('copy',        onCopy, true);
+      window.removeEventListener('blur',        onBlur, true);
+      window.removeEventListener('focus',       onFocus, true);
+      window.removeEventListener('contextmenu', onContextMenu, true);
+      window.removeEventListener('mouseup',     onMouseUp, true);
       clearTimeout(selectionTimer);
     };
   }, [push]);

@@ -83,13 +83,15 @@ function buildStdinScript(userCode, testCases) {
   s += '    orig_input = builtins.input\n';
   s += '    orig_stdout = sys.stdout\n';
   s += '    def fake(prompt=""):\n';
-  s += '        v = lines[idx[0]].strip() if idx[0] < len(lines) else ""\n';
+  s += '        if idx[0] >= len(lines) or (idx[0] == len(lines) - 1 and lines[-1] == ""):\n';
+  s += '            raise EOFError("EOF when reading a line")\n';
+  s += '        v = lines[idx[0]].strip()\n';
   s += '        idx[0] += 1\n';
   s += '        return v\n';
   s += '    builtins.input = fake\n';
   s += '    sys.stdout = buf\n';
   s += '    try:\n';
-  s += '        exec(__code__, {})\n';
+  s += '        exec(__code__, {"__name__": "__main__"})\n';
   s += '        result = buf.getvalue().strip()\n';
   s += '    except Exception as e:\n';
   s += '        result = "ERROR: " + str(e)\n';
