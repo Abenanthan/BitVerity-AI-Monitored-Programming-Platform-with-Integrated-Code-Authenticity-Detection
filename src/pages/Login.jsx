@@ -83,7 +83,7 @@ export default function Login() {
             <Zap size={26} color="#fff" />
           </div>
           <h1 style={{ fontSize: 22, fontWeight: 700, letterSpacing: '-0.5px', marginBottom: 6 }}>
-            Sign in to CodeVerify
+            Sign in to BitVerity 
           </h1>
           <p style={{ color: '#64748B', fontSize: 13 }}>
             Welcome back. Let's verify your code.

@@ -12,19 +12,19 @@ import { api } from '../utils/api';
 const MonacoEditor = lazy(() => import('@monaco-editor/react'));
 
 const DETECTION_METRICS = [
-  { key: 'behavioral',        label: 'Behavioral Analysis',   icon: '🧠' },
-  { key: 'codePattern',      label: 'Code Pattern Analysis',  icon: '🔍' },
-  { key: 'styleFingerprint', label: 'Style Fingerprinting',   icon: '✒️' },
-  { key: 'explainability',   label: 'Explainability Score',   icon: '💡' },
+  { key: 'behavioral', label: 'Behavioral Analysis', icon: '🧠' },
+  { key: 'codePattern', label: 'Code Pattern Analysis', icon: '🔍' },
+  { key: 'styleFingerprint', label: 'Style Fingerprinting', icon: '✒️' },
+  { key: 'explainability', label: 'Explainability Score', icon: '💡' },
 ];
 
 export default function Results() {
-  const { id }   = useParams();
+  const { id } = useParams();
   const navigate = useNavigate();
-  const [result, setResult]           = useState(null);
-  const [loading, setLoading]         = useState(true);
-  const [animating, setAnimating]     = useState(false);
-  const [showCode, setShowCode]       = useState(false);
+  const [result, setResult] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [animating, setAnimating] = useState(false);
+  const [showCode, setShowCode] = useState(false);
 
   useEffect(() => {
     async function load() {
@@ -58,12 +58,12 @@ export default function Results() {
 
   const ai = result.aiAnalysis;
   const isAiSuspected = ai.overallScore >= 60;
-  const isClean       = ai.overallScore < 30;
+  const isClean = ai.overallScore < 30;
 
   const overallColor =
-    isClean       ? '#10B981' :
-    isAiSuspected ? '#EF4444' :
-                    '#F59E0B';
+    isClean ? '#10B981' :
+      isAiSuspected ? '#EF4444' :
+        '#F59E0B';
 
   return (
     <div style={{
@@ -123,9 +123,9 @@ export default function Results() {
               </h2>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
                 {[
-                  { icon: Cpu,      label: 'Runtime',  value: result.runtime  },
-                  { icon: Database, label: 'Memory',   value: result.memory   },
-                  { icon: Clock,    label: 'Language', value: result.language },
+                  { icon: Cpu, label: 'Runtime', value: result.runtime },
+                  { icon: Database, label: 'Memory', value: result.memory },
+                  { icon: Clock, label: 'Language', value: result.language },
                 ].map(d => {
                   const Icon = d.icon;
                   return (
@@ -221,7 +221,7 @@ export default function Results() {
                       <td>
                         {tc.passed
                           ? <CheckCircle size={15} color="#10B981" aria-label="Passed" />
-                          : <XCircle    size={15} color="#EF4444" aria-label="Failed" />
+                          : <XCircle size={15} color="#EF4444" aria-label="Failed" />
                         }
                       </td>
                     </tr>
@@ -261,7 +261,7 @@ export default function Results() {
                 </div>
                 <div>
                   <div style={{ fontSize: 13, fontWeight: 700 }}>AI Detection Report</div>
-                  <div style={{ fontSize: 11, color: '#64748B' }}>Powered by CodeVerify Engine v2</div>
+                  <div style={{ fontSize: 11, color: '#64748B' }}>Powered by BitVerity Engine v2</div>
                 </div>
               </div>
 
@@ -277,8 +277,8 @@ export default function Results() {
                     const val = ai[m.key] || 0;
                     const barColor =
                       val < 30 ? '#10B981' :
-                      val < 61 ? '#F59E0B' :
-                                 '#EF4444';
+                        val < 61 ? '#F59E0B' :
+                          '#EF4444';
                     return (
                       <div key={m.key}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
@@ -443,7 +443,7 @@ export default function Results() {
 
 // Custom circular AI score ring for results page
 function AiScoreRing({ score, animating }) {
-  const size   = 140;
+  const size = 140;
   const stroke = 10;
   const radius = (size - stroke) / 2;
   const circum = 2 * Math.PI * radius;
@@ -451,13 +451,13 @@ function AiScoreRing({ score, animating }) {
 
   const color =
     score < 30 ? '#10B981' :
-    score < 61 ? '#F59E0B' :
-                 '#EF4444';
+      score < 61 ? '#F59E0B' :
+        '#EF4444';
 
   const label =
     score < 30 ? 'Low Risk' :
-    score < 61 ? 'Suspicious' :
-                 'High Risk';
+      score < 61 ? 'Suspicious' :
+        'High Risk';
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>

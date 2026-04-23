@@ -8,6 +8,7 @@ const Dashboard = lazy(() => import('./pages/Dashboard'));
 const Problems = lazy(() => import('./pages/Problems'));
 const Contest  = lazy(() => import('./pages/Contest'));
 const Results  = lazy(() => import('./pages/Results'));
+const Workspace = lazy(() => import('./pages/Workspace'));
 
 function PageLoader() {
   return (
@@ -62,6 +63,8 @@ export default function App() {
           <Route path="/dashboard"    element={<Dashboard />} />
           <Route path="/problems"     element={<Problems />} />
           <Route path="/contest/:id"  element={<Contest />} />
+          <Route path="/workspace/:problemId" element={<Workspace />} />
+          <Route path="/editor" element={<Workspace />} />
           <Route path="/results/:id"  element={<Results />} />
           {/* Catch-all */}
           <Route path="*"             element={<Navigate to="/landing" replace />} />

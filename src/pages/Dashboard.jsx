@@ -13,16 +13,16 @@ import ContestTimer from '../components/ContestTimer';
 import { SAMPLE_SUBMISSIONS, ACTIVE_CONTESTS } from '../utils/constants';
 
 const STATS = [
-  { label: 'Problems Solved', value: 247,  icon: CheckCircle2, color: '#10B981' },
-  { label: 'Contests Won',    value: 12,   icon: Trophy,       color: '#F59E0B' },
-  { label: 'Current Streak',  value: '9d', icon: Flame,        color: '#EF4444' },
-  { label: 'AI Flags',        value: 0,    icon: AlertTriangle, color: '#64748B' },
+  { label: 'Problems Solved', value: 247, icon: CheckCircle2, color: '#10B981' },
+  { label: 'Contests Won', value: 12, icon: Trophy, color: '#F59E0B' },
+  { label: 'Current Streak', value: '9d', icon: Flame, color: '#EF4444' },
+  { label: 'AI Flags', value: 0, icon: AlertTriangle, color: '#64748B' },
 ];
 
 const RECOMMENDED = [
-  { id: 3,  title: 'Median of Two Sorted Arrays', difficulty: 'Hard',   topics: ['Array', 'Binary Search'] },
-  { id: 11, title: 'Coin Change',                 difficulty: 'Medium', topics: ['Dynamic Programming']   },
-  { id: 1,  title: 'Two Sum',                     difficulty: 'Easy',   topics: ['Array', 'Hash Table']   },
+  { id: 3, title: 'Median of Two Sorted Arrays', difficulty: 'Hard', topics: ['Array', 'Binary Search'] },
+  { id: 11, title: 'Coin Change', difficulty: 'Medium', topics: ['Dynamic Programming'] },
+  { id: 1, title: 'Two Sum', difficulty: 'Easy', topics: ['Array', 'Hash Table'] },
 ];
 
 export default function Dashboard() {
@@ -85,8 +85,8 @@ export default function Dashboard() {
               AC
             </div>
             <div>
-              <div style={{ fontSize: 13, fontWeight: 600 }}>Alex Chen</div>
-              <div style={{ fontSize: 11, color: '#64748B' }}>@alexchen</div>
+              <div style={{ fontSize: 13, fontWeight: 600 }}>Ashwin  </div>
+              <div style={{ fontSize: 11, color: '#64748B' }}>@Ashwin </div>
             </div>
           </div>
         </header>
@@ -95,7 +95,7 @@ export default function Dashboard() {
         <main style={{ flex: 1, padding: '28px 28px', overflowY: 'auto' }} className="page-enter">
           {/* Page header */}
           <div style={{ marginBottom: 28 }}>
-            <h1 style={{ fontSize: 22, fontWeight: 700, letterSpacing: '-0.5px', marginBottom: 4 }}>Good morning, Alex 👋</h1>
+            <h1 style={{ fontSize: 22, fontWeight: 700, letterSpacing: '-0.5px', marginBottom: 4 }}>Good morning, Ashwin  👋</h1>
             <p style={{ color: '#64748B', fontSize: 13 }}>Here's your coding activity at a glance.</p>
           </div>
 

@@ -72,7 +72,7 @@ export default function Landing() {
           }}>
             <Zap size={18} color="#fff" />
           </div>
-          <span style={{ fontWeight: 700, fontSize: 16, letterSpacing: '-0.5px' }}>CodeVerify</span>
+          <span style={{ fontWeight: 700, fontSize: 16, letterSpacing: '-0.5px' }}>BitVerity</span>
         </div>
         <div style={{ display: 'flex', gap: 32, alignItems: 'center' }}>
           {['Features', 'Contests', 'Leaderboard', 'Pricing'].map(item => (
@@ -174,8 +174,8 @@ export default function Landing() {
             {/* Micro stats */}
             <div style={{ display: 'flex', gap: 32, marginTop: 48 }}>
               {[
-                { value: '10K+',  label: 'Problems' },
-                { value: '50K+',  label: 'Developers' },
+                { value: '10K+', label: 'Problems' },
+                { value: '50K+', label: 'Developers' },
                 { value: '99.2%', label: 'AI Accuracy' },
               ].map(s => (
                 <div key={s.label}>
@@ -248,9 +248,9 @@ export default function Landing() {
                 </div>
                 <div style={{ display: 'flex', gap: 16, marginTop: 12 }}>
                   {[
-                    { label: 'Behavioral', val: '8%',  color: '#10B981' },
-                    { label: 'Patterns',   val: '15%', color: '#10B981' },
-                    { label: 'Style',      val: '9%',  color: '#10B981' },
+                    { label: 'Behavioral', val: '8%', color: '#10B981' },
+                    { label: 'Patterns', val: '15%', color: '#10B981' },
+                    { label: 'Style', val: '9%', color: '#10B981' },
                   ].map(m => (
                     <span key={m.label} style={{
                       fontSize: 10, color: '#64748B',
@@ -308,7 +308,7 @@ export default function Landing() {
       <section id="features" style={{ padding: '100px 48px', maxWidth: 1200, margin: '0 auto' }}>
         <div className="scroll-reveal" style={{ textAlign: 'center', marginBottom: 64 }}>
           <div style={{ fontSize: 12, color: '#00D4FF', fontFamily: 'JetBrains Mono, monospace', letterSpacing: '0.15em', textTransform: 'uppercase', marginBottom: 12 }}>
-            Why CodeVerify
+            Why BitVerity
           </div>
           <h2 style={{ fontSize: 36, fontWeight: 700, letterSpacing: '-0.5px', marginBottom: 16 }}>
             Built for Authentic Competition
@@ -350,10 +350,10 @@ export default function Landing() {
         flexWrap: 'wrap',
       }}>
         {[
-          { value: '10K+',  label: 'Problems',         color: '#00D4FF' },
-          { value: '50K+',  label: 'Developers',       color: '#7C3AED' },
+          { value: '10K+', label: 'Problems', color: '#00D4FF' },
+          { value: '50K+', label: 'Developers', color: '#7C3AED' },
           { value: '99.2%', label: 'Detection Accuracy', color: '#10B981' },
-          { value: '1.2M+', label: 'Submissions',      color: '#F59E0B' },
+          { value: '1.2M+', label: 'Submissions', color: '#F59E0B' },
         ].map(s => (
           <div key={s.label} style={{ textAlign: 'center' }}>
             <div style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 30, fontWeight: 700, color: s.color }}>{s.value}</div>
@@ -398,9 +398,9 @@ export default function Landing() {
           }}>
             <Zap size={13} color="#fff" />
           </div>
-          <span style={{ fontWeight: 600, color: '#F1F5F9' }}>CodeVerify</span>
+          <span style={{ fontWeight: 600, color: '#F1F5F9' }}>BitVerity </span>
         </div>
-        <span>© 2025 CodeVerify. All rights reserved.</span>
+        <span>© 2025 BitVerity. All rights reserved.</span>
         <div style={{ display: 'flex', gap: 24 }}>
           {['Privacy', 'Terms', 'Contact'].map(l => (
             <a key={l} href="#" style={{ color: '#64748B', textDecoration: 'none' }}

@@ -11,7 +11,29 @@ import VerdictBanner from '../components/VerdictBanner';
 import { STARTER_CODE, ACTIVE_CONTESTS } from '../utils/constants';
 import { api } from '../utils/api';
 import { useSocket } from '../hooks/useSocket';
-import { useBehaviorMonitor } from '../hooks/useBehaviorMonitor';
+import { useBehaviorTracker } from '../hooks/useBehaviorTracker';
+
+// ── Real code execution via Wandbox ──────────────────────────────
+async function runWandbox(code, language, stdin) {
+  const compilers = { python: 'cpython-3.10.15', javascript: 'nodejs-20.10.0', cpp: 'gcc-head', java: 'openjdk-head' };
+  const compiler = compilers[language] || 'cpython-3.10.15';
+  try {
+    const res = await fetch('https://wandbox.org/api/compile.json', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ compiler, code, stdin: stdin || '', save: false }),
+    });
+    if (!res.ok) return { out: '', err: `API Error ${res.status}`, exitCode: 1 };
+    const d = await res.json();
+    return {
+      out: d.program_output || '',
+      err: (d.compiler_error || '') + (d.program_error || ''),
+      exitCode: d.status === '0' ? 0 : 1,
+    };
+  } catch (e) {
+    return { out: '', err: `Network error: ${e.message}`, exitCode: 1 };
+  }
+}
 
 // Lazy-load Monaco
 const MonacoEditor = lazy(() => import('@monaco-editor/react'));
@@ -53,7 +75,7 @@ export default function Contest() {
   const [lang, setLang]         = useState('python');
   const [code, setCode]         = useState(STARTER_CODE.python);
   const [fontSize, setFontSize] = useState(14);
-  const [customInput, setCustomInput] = useState('[2,7,11,15]\n9');
+  const [customInput, setCustomInput] = useState('2 7 11 15\n9');
   const [output, setOutput]     = useState('');
   const [verdict, setVerdict]   = useState(null);
   const [running, setRunning]   = useState(false);
@@ -62,9 +84,9 @@ export default function Contest() {
   const [activeTab, setActiveTab] = useState(0);
   const [openExamples, setOpenExamples] = useState([0]);
 
-  // Behavior monitor
-  const behaviorEvents = useBehaviorMonitor();
-  const [pasteFlash, setPasteFlash]       = useState(false);
+  // Behavior tracking — replaces old useBehaviorMonitor
+  const { getLog, clearLog, getAnalysis } = useBehaviorTracker();
+  const [pasteFlash, setPasteFlash] = useState(false);
   const editorWrapperRef = useRef(null);
 
   // Line/col tracking
@@ -95,29 +117,59 @@ export default function Contest() {
   async function handleRun() {
     setRunning(true);
     setVerdict(null);
-    setOutput('Running...');
-    await new Promise(r => setTimeout(r, 1200));
-    setOutput(`Input:\n${customInput}\n\nOutput:\n[0, 1]\n\nExpected:\n[0, 1]\n\n✓ All test cases passed`);
+    setOutput('▶ Running your code…');
+
+    // Pass customInput as stdin so both styles work:
+    // - Stdin-based: reads from input() → gets customInput lines
+    // - Class-based: add test calls at bottom; customInput is ignored
+    const { out, err, exitCode } = await runWandbox(code, lang, customInput);
+
+    let result = '';
+    if (out) result += out;
+    if (err) result += (result ? '\n' : '') + '--- Errors ---\n' + err;
+    if (!out && !err) result = '(no output)';
+    result += exitCode === 0 ? '\n\n✓ Exited with code 0' : `\n\n✗ Exited with code ${exitCode}`;
+
+    setOutput(result);
     setRunning(false);
   }
 
   async function handleSubmit() {
     setSubmitting(true);
     setVerdict(null);
-    setOutput('Judging submission...');
+    setOutput('⏳ Judging submission…');
     try {
-      const result = await api.submitCode(id, 1, code, lang);
-      setVerdict(result.verdict);
-      setOutput(
-        result.verdict === 'accepted'
-          ? `✓ Accepted\nRuntime: ${result.runtime}\nMemory: ${result.memory}\n\nAll test cases passed!`
-          : result.verdict === 'tle'
-          ? `⏱ Time Limit Exceeded\nRuntime: > 2000ms`
-          : `✗ Wrong Answer\nTest #2 failed.\n\nInput: [3,2,4], target=6\nExpected: [1,2]\nGot: [0,2]`
-      );
-      if (result.verdict === 'accepted') {
-        setTimeout(() => navigate(`/results/sub-${Date.now()}`), 1500);
+      // Capture behavior analysis before clearing
+      const analysis = getAnalysis();
+      const logs = getLog();
+      console.log('[AI Tracker] Analysis:', analysis);
+
+      const result = await api.submitCode(id, 'two-sum', code, lang, logs);
+
+      // Override AI score with real behavior analysis
+      if (result.aiAnalysis) {
+        result.aiAnalysis.overallScore    = analysis.score;
+        result.aiAnalysis.behavioral      = analysis.score;
+        result.aiAnalysis.flags           = analysis.flags;
+        result.aiAnalysis.behaviorSummary = analysis.summary;
+        result.aiAnalysis.stats           = analysis.stats;
       }
+
+      setVerdict(result.verdict);
+      if (result.verdict === 'accepted') {
+        const passed = result.testCases.filter(t => t.passed).length;
+        setOutput(`✓ Accepted\nRuntime: ${result.runtime}\nMemory: ${result.memory}\n\n${passed}/${result.testCases.length} test cases passed!\n\nAI Detection Score: ${analysis.score}% suspicious\n${analysis.summary}`);
+        clearLog();
+        setTimeout(() => navigate(`/results/${result.id}`), 2500);
+      } else {
+        const failed = result.testCases.filter(t => !t.passed);
+        const details = failed.map(t =>
+          `✗ Input: ${t.input}\n  Expected: ${t.expected}\n  Got:      ${t.output}`
+        ).join('\n\n');
+        setOutput(`✗ Wrong Answer\n\n${details}`);
+      }
+    } catch (err) {
+      setOutput(`Error: ${err.message}`);
     } finally {
       setSubmitting(false);
     }
@@ -519,25 +571,33 @@ export default function Contest() {
             )}
           </div>
 
-          {/* Custom test input */}
+          {/* Custom stdin input */}
           <div style={{ padding: '14px', borderBottom: '1px solid var(--border)' }}>
-            <label htmlFor="custom-input" style={{ fontSize: 11, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.08em', display: 'block', marginBottom: 8 }}>
-              Custom Input
+            <label htmlFor="custom-input" style={{ fontSize: 11, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.08em', display: 'block', marginBottom: 6 }}>
+              Custom Input (stdin for Run)
             </label>
             <textarea
               id="custom-input"
               value={customInput}
               onChange={e => setCustomInput(e.target.value)}
-              rows={4}
-              className="input-field"
+              rows={3}
               style={{
+                width: '100%', boxSizing: 'border-box',
                 fontFamily: 'JetBrains Mono, monospace',
-                fontSize: 12, resize: 'vertical',
+                fontSize: 11.5, resize: 'vertical',
                 background: 'var(--bg-base)',
+                border: '1px solid var(--border)',
+                borderRadius: 6, padding: '8px 10px',
+                color: '#94A3B8', outline: 'none',
+                lineHeight: 1.6,
               }}
-              placeholder="Enter test input..."
-              aria-label="Custom test input"
+              placeholder={'2 7 11 15\n9'}
+              aria-label="Custom stdin input"
             />
+            <div style={{ fontSize: 10.5, color: '#374151', marginTop: 5, lineHeight: 1.5 }}>
+              Stdin-based: edit above → Run<br/>
+              Class-based: add test calls in editor → Run
+            </div>
           </div>
 
           {/* Output console */}
@@ -581,15 +641,15 @@ export default function Contest() {
         <span>Spaces: 4</span>
         <span>UTF-8</span>
         <div style={{ flex: 1 }} />
-        {behaviorEvents && behaviorEvents.length > 0 && (
+        {getAnalysis && getAnalysis().stats && getAnalysis().stats.tabSwitches > 0 && (
           <div
             className="behavior-dot"
-            title={`${behaviorEvents.length} behavior event(s) detected`}
+            title={`AI Tracker: ${getAnalysis().stats.tabSwitches} tab switch(es), ${getAnalysis().stats.pastes} paste(s)`}
             style={{ display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer' }}
           >
             <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#F59E0B', boxShadow: '0 0 6px rgba(245,158,11,0.6)' }} />
             <span style={{ color: '#F59E0B', fontSize: 11 }}>
-              <AlertTriangle size={10} style={{ display: 'inline' }} /> {behaviorEvents.length} behavior event{behaviorEvents.length !== 1 ? 's' : ''}
+              <AlertTriangle size={10} style={{ display: 'inline' }} /> Behavior flagged
             </span>
           </div>
         )}
