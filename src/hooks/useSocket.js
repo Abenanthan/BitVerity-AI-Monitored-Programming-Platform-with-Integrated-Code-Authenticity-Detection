@@ -1,34 +1,63 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useCallback } from 'react';
+import { io } from 'socket.io-client';
 
-// Mock Socket.io hook — only connects on contest pages
-export function useSocket(contestId, onEvent) {
+export function useSocket(onEvent) {
   const socketRef = useRef(null);
+  const onEventRef = useRef(onEvent);
+  onEventRef.current = onEvent;
 
   useEffect(() => {
-    if (!contestId) return;
+    const token = localStorage.getItem('codeverify_token');
+    if (!token) return;
 
-    // In a real app: socketRef.current = io('wss://your-server.com', { query: { contestId } });
-    // For the demo, we simulate events
-    const mockEvents = [
-      { type: 'leaderboard_update', data: { rank: 12 } },
-      { type: 'contest_announcement', data: { message: 'Problem 2 has been updated' } },
-    ];
+    const SOCKET_URL = import.meta.env.VITE_API_URL?.replace('/api', '') || 'http://localhost:5000';
+    
+    const socket = io(SOCKET_URL, {
+      auth: { token },
+      transports: ['websocket', 'polling'],
+    });
 
-    let idx = 0;
-    const id = setInterval(() => {
-      if (idx < mockEvents.length && onEvent) {
-        onEvent(mockEvents[idx]);
-        idx++;
+    socketRef.current = socket;
+
+    socket.on('connect', () => {
+      console.log('Socket connected:', socket.id);
+
+      // Decode JWT to extract userId to join personal room
+      try {
+        const payload = JSON.parse(atob(token.split('.')[1]));
+        if (payload.sub) {
+          socket.emit('join:user', { userId: payload.sub });
+        }
+      } catch (e) {
+        console.error('Failed to parse JWT for socket', e);
       }
-    }, 15000);
+    });
+
+    // Listen for the real backend event names
+    socket.on('submission:verdict', (data) => {
+      if (onEventRef.current) onEventRef.current({ type: 'submission_verdict', data });
+    });
+
+    socket.on('submission:detection', (data) => {
+      if (onEventRef.current) onEventRef.current({ type: 'detection_update', data });
+    });
+
+    socket.on('contest:leaderboard:update', (data) => {
+      if (onEventRef.current) onEventRef.current({ type: 'leaderboard_update', data });
+    });
+
+    socket.on('disconnect', () => console.log('Socket disconnected'));
 
     return () => {
-      clearInterval(id);
-      if (socketRef.current) {
-        socketRef.current.disconnect();
-      }
+      socket.disconnect();
     };
-  }, [contestId, onEvent]);
+  }, []);
 
-  return socketRef.current;
+  const joinContest = useCallback((contestId) => {
+    if (socketRef.current && contestId) {
+      socketRef.current.emit('join:contest', { contestId });
+    }
+  }, []);
+
+  return { socket: socketRef.current, joinContest };
 }

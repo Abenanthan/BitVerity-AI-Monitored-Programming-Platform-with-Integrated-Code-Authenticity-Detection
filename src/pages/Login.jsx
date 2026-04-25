@@ -25,10 +25,12 @@ export default function Login() {
     setError('');
     setLoading(true);
     try {
-      await api.login(email, password);
+      const { accessToken } = await api.login(email, password);
+      localStorage.setItem('codeverify_token', accessToken);
       navigate('/dashboard');
-    } catch {
-      setError('Invalid credentials. Try any email + password.');
+    } catch (err) {
+      console.error(err);
+      setError('Invalid credentials. Please try again.');
     } finally {
       setLoading(false);
     }

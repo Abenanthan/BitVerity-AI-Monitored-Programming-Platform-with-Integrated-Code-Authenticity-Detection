@@ -14,7 +14,7 @@ const MonacoEditor = lazy(() => import('@monaco-editor/react'));
 const DETECTION_METRICS = [
   { key: 'behavioral', label: 'Behavioral Analysis', icon: '🧠' },
   { key: 'codePattern', label: 'Code Pattern Analysis', icon: '🔍' },
-  { key: 'styleFingerprint', label: 'Style Fingerprinting', icon: '✒️' },
+  { key: 'fingerprint', label: 'Style Fingerprinting', icon: '✒️' },
   { key: 'explainability', label: 'Explainability Score', icon: '💡' },
 ];
 
@@ -27,17 +27,35 @@ export default function Results() {
   const [showCode, setShowCode] = useState(false);
 
   useEffect(() => {
+    let pollInterval;
+
     async function load() {
       try {
         const data = await api.getResults(id);
         setResult(data);
-        // Start animations after data loads
+        
+        // Start animations
         setTimeout(() => setAnimating(true), 100);
+
+        // If detection report is missing, poll every 3s
+        if (!data.detectionReport && !pollInterval) {
+          pollInterval = setInterval(async () => {
+            const updated = await api.getResults(id);
+            if (updated.detectionReport) {
+              setResult(updated);
+              clearInterval(pollInterval);
+            }
+          }, 3000);
+        }
+      } catch (err) {
+        console.error("Failed to load results:", err);
       } finally {
         setLoading(false);
       }
     }
+
     load();
+    return () => clearInterval(pollInterval);
   }, [id]);
 
   if (loading) {
@@ -56,9 +74,15 @@ export default function Results() {
 
   if (!result) return null;
 
-  const ai = result.aiAnalysis;
-  const isAiSuspected = ai.overallScore >= 60;
-  const isClean = ai.overallScore < 30;
+  // Map backend's 'detectionReport' to what the UI expects
+  const ai = result.detectionReport || {
+    finalAiScore: 0, behavioralScore: 0, codePatternScore: 0,
+    fingerprintScore: 0, explainabilityScore: 0, flags: []
+  };
+
+  const finalScorePercent = Math.round((ai.finalAiScore || 0) * 100);
+  const isAiSuspected = finalScorePercent >= 60;
+  const isClean = finalScorePercent < 30;
 
   const overallColor =
     isClean ? '#10B981' :
@@ -89,7 +113,7 @@ export default function Results() {
         <span style={{ color: 'rgba(255,255,255,0.15)' }}>|</span>
         <span style={{ fontSize: 14, fontWeight: 600 }}>Submission Result</span>
         <div style={{ flex: 1 }} />
-        <AiDetectionBadge score={ai.overallScore} />
+        <AiDetectionBadge score={finalScorePercent} />
         <button
           aria-label="View all submissions"
           onClick={() => navigate('/problems')}
@@ -123,8 +147,8 @@ export default function Results() {
               </h2>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
                 {[
-                  { icon: Cpu, label: 'Runtime', value: result.runtime },
-                  { icon: Database, label: 'Memory', value: result.memory },
+                  { icon: Cpu, label: 'Runtime', value: result.runtime ? `${result.runtime}ms` : 'N/A' },
+                  { icon: Database, label: 'Memory', value: result.memory ? `${(result.memory / 1024).toFixed(1)}MB` : 'N/A' },
                   { icon: Clock, label: 'Language', value: result.language },
                 ].map(d => {
                   const Icon = d.icon;
@@ -205,27 +229,28 @@ export default function Results() {
                 <thead>
                   <tr>
                     <th>#</th>
-                    <th>Input</th>
-                    <th>Expected</th>
-                    <th>Got</th>
                     <th>Status</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {result.testCases.map((tc, i) => (
+                  {(result.testCaseResults || []).map((tc, i) => (
                     <tr key={i}>
                       <td style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 12, color: '#64748B' }}>{i + 1}</td>
-                      <td><code style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 11, color: '#94A3B8' }}>{tc.input}</code></td>
-                      <td><code style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 11, color: '#10B981' }}>{tc.expected}</code></td>
-                      <td><code style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 11, color: tc.passed ? '#10B981' : '#EF4444' }}>{tc.output}</code></td>
                       <td>
                         {tc.passed
-                          ? <CheckCircle size={15} color="#10B981" aria-label="Passed" />
-                          : <XCircle size={15} color="#EF4444" aria-label="Failed" />
+                          ? <><CheckCircle size={15} color="#10B981" style={{ verticalAlign: 'middle', marginRight: 6 }} /> <span style={{ color: '#10B981' }}>Passed</span></>
+                          : <><XCircle size={15} color="#EF4444" style={{ verticalAlign: 'middle', marginRight: 6 }} /> <span style={{ color: '#EF4444' }}>Failed</span></>
                         }
                       </td>
                     </tr>
                   ))}
+                  {(!result.testCaseResults || result.testCaseResults.length === 0) && (
+                    <tr>
+                      <td colSpan="2" style={{ textAlign: 'center', color: '#64748B', fontSize: 12, padding: '20px 0' }}>
+                        No test case details available
+                      </td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             </div>
@@ -268,13 +293,14 @@ export default function Results() {
               <div style={{ padding: '20px' }}>
                 {/* Big score ring */}
                 <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 24 }}>
-                  <AiScoreRing score={ai.overallScore} animating={animating} />
+                  <AiScoreRing score={finalScorePercent} animating={animating} />
                 </div>
 
                 {/* Metric breakdowns */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginBottom: 20 }}>
                   {DETECTION_METRICS.map(m => {
-                    const val = ai[m.key] || 0;
+                    const mappedKey = m.key + 'Score'; // map 'behavioral' to 'behavioralScore'
+                    const val = Math.round((ai[mappedKey] || 0) * 100);
                     const barColor =
                       val < 30 ? '#10B981' :
                         val < 61 ? '#F59E0B' :
@@ -324,8 +350,7 @@ export default function Results() {
                           borderRadius: 6,
                         }}>
                           <AlertTriangle size={12} color="#F59E0B" />
-                          <span style={{ fontSize: 12, color: '#CBD5E1', flex: 1 }}>{flag.message}</span>
-                          <span style={{ fontSize: 10, fontFamily: 'JetBrains Mono, monospace', color: '#64748B' }}>t={flag.time}</span>
+                          <span style={{ fontSize: 12, color: '#CBD5E1', flex: 1 }}>{flag.detail || flag.message}</span>
                         </div>
                       ))}
                     </div>
@@ -392,23 +417,23 @@ export default function Results() {
                   borderRadius: 8,
                 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <TrustScoreRing score={78} size={44} strokeWidth={4} />
+                    <TrustScoreRing score={result.user?.trustScore || 80} size={44} strokeWidth={4} />
                     <div>
                       <div style={{ fontSize: 11, color: '#64748B' }}>Trust Score Impact</div>
-                      <div style={{ fontSize: 11, color: '#94A3B8', marginTop: 1 }}>Your new score: 80</div>
+                      <div style={{ fontSize: 11, color: '#94A3B8', marginTop: 1 }}>Your new score: {Math.round(result.user?.trustScore) || 80}</div>
                     </div>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                    {result.trustScoreImpact > 0
+                    {(ai.trustScoreDelta || 0) > 0
                       ? <TrendingUp size={16} color="#10B981" />
                       : <TrendingDown size={16} color="#EF4444" />
                     }
                     <span style={{
                       fontFamily: 'JetBrains Mono, monospace',
                       fontSize: 20, fontWeight: 800,
-                      color: result.trustScoreImpact > 0 ? '#10B981' : '#EF4444',
+                      color: (ai.trustScoreDelta || 0) >= 0 ? '#10B981' : '#EF4444',
                     }}>
-                      {result.trustScoreImpact > 0 ? '+' : ''}{result.trustScoreImpact}
+                      {(ai.trustScoreDelta || 0) > 0 ? '+' : ''}{(ai.trustScoreDelta || 0).toFixed(1)}
                     </span>
                   </div>
                 </div>

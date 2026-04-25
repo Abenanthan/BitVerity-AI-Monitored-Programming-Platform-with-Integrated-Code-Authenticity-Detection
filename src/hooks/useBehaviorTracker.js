@@ -11,38 +11,40 @@ export function useBehaviorTracker() {
   const sessionStart = useRef(Date.now());
 
   const push = useCallback((type, data = {}) => {
-    log.current.push({ type, t: Date.now() - sessionStart.current, abs: Date.now(), ...data });
+    const now = Date.now();
+    log.current.push({ type, time: now, t: now - sessionStart.current, ...data });
   }, []);
 
-  useEffect(() => {
-    // ── Keystroke tracking ───────────────────────────────────────
-    const onKey = (e) => {
-      const now = Date.now();
-      keyTimes.current.push(now);
+  // ── Keystroke tracking ───────────────────────────────────────
+  const onKey = useCallback((e) => {
+    const now = Date.now();
+    keyTimes.current.push(now);
 
-      // Keep only last 20 timestamps
-      if (keyTimes.current.length > 20) keyTimes.current.shift();
+    // Keep only last 20 timestamps
+    if (keyTimes.current.length > 20) keyTimes.current.shift();
 
-      // Detect burst typing (>= BURST_MIN_KEYS keystrokes within BURST_THRESHOLD_MS each)
-      if (keyTimes.current.length >= BURST_MIN_KEYS) {
-        const recent = keyTimes.current.slice(-BURST_MIN_KEYS);
-        const maxGap = Math.max(...recent.slice(1).map((t, i) => t - recent[i]));
-        if (maxGap < BURST_THRESHOLD_MS) {
-          // Only flag this burst once per second to avoid flooding
-          const lastBurst = log.current.filter(ev => ev.type === 'burst_typing').slice(-1)[0];
-          if (!lastBurst || now - lastBurst.abs > 1000) {
-            push('burst_typing', { keys: BURST_MIN_KEYS, maxGapMs: maxGap });
-          }
+    // Detect burst typing (>= BURST_MIN_KEYS keystrokes within BURST_THRESHOLD_MS each)
+    if (keyTimes.current.length >= BURST_MIN_KEYS) {
+      const recent = keyTimes.current.slice(-BURST_MIN_KEYS);
+      const maxGap = Math.max(...recent.slice(1).map((t, i) => t - recent[i]));
+      if (maxGap < BURST_THRESHOLD_MS) {
+        // Only flag this burst once per second to avoid flooding
+        const lastBurst = log.current.filter(ev => ev.type === 'burst_typing').slice(-1)[0];
+        if (!lastBurst || now - lastBurst.abs > 1000) {
+          push('burst_typing', { keys: BURST_MIN_KEYS, maxGapMs: maxGap });
         }
       }
+    }
 
-      push('keypress', {
-        isChar: e.key.length === 1,
-        key: e.key.length === 1 ? 'char' : e.key,
-        ctrl: e.ctrlKey || e.metaKey,
-      });
-    };
+    push('keystroke', {
+      time: now,
+      isChar: e.key && e.key.length === 1,
+      key: e.key && e.key.length === 1 ? 'char' : e.key,
+      ctrl: e.ctrlKey || e.metaKey,
+    });
+  }, [push]);
 
+  useEffect(() => {
     // ── Paste tracking ───────────────────────────────────────────
     const onPaste = (e) => {
       const text = (e.clipboardData || window.clipboardData || {}).getData('text') || '';
@@ -94,7 +96,6 @@ export function useBehaviorTracker() {
     };
 
     document.addEventListener('visibilitychange', onVisibility, true);
-    window.addEventListener('keydown',     onKey, true);
     window.addEventListener('paste',       onPaste, true);
     window.addEventListener('copy',        onCopy, true);
     window.addEventListener('blur',        onBlur, true);
@@ -104,7 +105,6 @@ export function useBehaviorTracker() {
 
     return () => {
       document.removeEventListener('visibilitychange', onVisibility, true);
-      window.removeEventListener('keydown',     onKey, true);
       window.removeEventListener('paste',       onPaste, true);
       window.removeEventListener('copy',        onCopy, true);
       window.removeEventListener('blur',        onBlur, true);
@@ -115,7 +115,6 @@ export function useBehaviorTracker() {
     };
   }, [push]);
 
-  // ── Analytics ────────────────────────────────────────────────────
   const getLog = useCallback(() => [...log.current], []);
 
   const clearLog = useCallback(() => {
@@ -138,7 +137,7 @@ export function useBehaviorTracker() {
     const bursts        = events.filter(e => e.type === 'burst_typing');
     const tabSwitches   = events.filter(e => e.type === 'tab_hidden').length;
     const windowBlurs   = events.filter(e => e.type === 'window_blur').length;
-    const keypresses    = events.filter(e => e.type === 'keypress').length;
+    const keypresses    = events.filter(e => e.type === 'keystroke').length;
     const copies        = events.filter(e => e.type === 'copy').length;
 
     const flags = [];
@@ -204,5 +203,5 @@ export function useBehaviorTracker() {
     };
   }, []);
 
-  return { getLog, clearLog, getAnalysis };
+  return { getLog, clearLog, getAnalysis, onKey };
 }

@@ -130,8 +130,9 @@ model Submission {
   memory        Int?                         // kilobytes
   aiScore       Float?                       // 0.0 – 1.0
   aiVerdict     AiVerdict?
-  behaviorLogId String?    @db.Uuid          // reference to Redis / behaviour session
-  submittedAt   DateTime   @default(now())
+  behaviorLogId   String?    @db.Uuid          // reference to Redis / behaviour session
+  testCaseResults Json?      @db.JsonB         // [{ passed: true, input: "...", output: "..." }]
+  submittedAt     DateTime   @default(now())
 
   // Relations
   user            User             @relation(fields: [userId],    references: [id], onDelete: Cascade)

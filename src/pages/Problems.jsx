@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Search, CheckCircle2, Circle, Filter, ChevronLeft, ChevronRight } from 'lucide-react';
 import Sidebar from '../components/Sidebar';
 import DifficultyBadge from '../components/DifficultyBadge';
 import { SAMPLE_PROBLEMS } from '../utils/constants';
+import { api } from '../utils/api';
 
 const TOPICS = ['Array', 'String', 'Dynamic Programming', 'Tree', 'Graph', 'Binary Search', 'Stack', 'Linked List', 'Hash Table', 'Backtracking', 'Greedy', 'Heap', 'Trie', 'BFS', 'Two Pointers'];
 
@@ -15,9 +16,26 @@ export default function Problems() {
   const [statusFilter, setStatusFilter] = useState('all');
   const [page, setPage]             = useState(1);
   const [hoveredRow, setHoveredRow] = useState(null);
+  const [problems, setProblems]     = useState([]);
+  const [loading, setLoading]       = useState(true);
   const PER_PAGE = 8;
 
-  const filtered = SAMPLE_PROBLEMS.filter(p => {
+  useEffect(() => {
+    async function loadProblems() {
+      try {
+        const data = await api.getProblems();
+        // Fallback to SAMPLE_PROBLEMS if DB empty for testing setup
+        setProblems(data && data.length > 0 ? data : SAMPLE_PROBLEMS);
+      } catch {
+        setProblems(SAMPLE_PROBLEMS);
+      } finally {
+        setLoading(false);
+      }
+    }
+    loadProblems();
+  }, []);
+
+  const filtered = problems.filter(p => {
     const q = search.toLowerCase();
     if (q && !p.title.toLowerCase().includes(q)) return false;
     if (diffFilter.length && !diffFilter.includes(p.difficulty)) return false;
@@ -146,6 +164,10 @@ export default function Problems() {
 
         {/* Main table */}
         <main style={{ flex: 1, padding: '24px', overflowY: 'auto' }} className="page-enter">
+          {loading ? (
+             <div style={{ textAlign: 'center', marginTop: 100, color: '#64748B' }}>Loading problems...</div>
+          ) : (
+          <>
           {/* Header */}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
             <div>
@@ -194,7 +216,7 @@ export default function Problems() {
                   <tr
                     key={p.id}
                     style={{ cursor: 'pointer', position: 'relative' }}
-                    onClick={() => navigate('/contest/weekly-42')}
+                    onClick={() => navigate(p.slug ? `/problem/${p.slug}` : '/problem/two-sum')}
                     onMouseEnter={() => setHoveredRow(p.id)}
                     onMouseLeave={() => setHoveredRow(null)}
                   >
@@ -302,6 +324,8 @@ export default function Problems() {
                 </button>
               </div>
             </div>
+          )}
+          </>
           )}
         </main>
       </div>

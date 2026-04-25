@@ -47,64 +47,55 @@ export const STARTER_CODE = {
   cpp: `#include <bits/stdc++.h>
 using namespace std;
 
-class Solution {
-public:
-    vector<int> twoSum(vector<int>& nums, int target) {
-        // Your code here
-        unordered_map<int, int> seen;
-        for (int i = 0; i < nums.size(); i++) {
-            int complement = target - nums[i];
-            if (seen.count(complement)) {
-                return {seen[complement], i};
-            }
-            seen[nums[i]] = i;
-        }
-        return {};
-    }
-};`,
-  python: `from typing import List
+void solve() {
+    // Write your solution here
+}
 
-class Solution:
-    def twoSum(self, nums: List[int], target: int) -> List[int]:
-        # Your code here
-        seen = {}
-        for i, num in enumerate(nums):
-            complement = target - num
-            if complement in seen:
-                return [seen[complement], i]
-            seen[num] = i
-        return []`,
+int main() {
+    ios_base::sync_with_stdio(false);
+    cin.tie(NULL);
+    solve();
+    return 0;
+}`,
+  python: `import sys
+
+def solve():
+    # Read all lines from standard input
+    input_data = sys.stdin.read().splitlines()
+    if not input_data:
+        return
+        
+    # Example: Parse the first line as string 's'
+    s = input_data[0]
+    
+    # Write your solution here and print the result
+    print("Output goes here")
+
+if __name__ == '__main__':
+    solve()`,
   java: `import java.util.*;
 
-class Solution {
-    public int[] twoSum(int[] nums, int target) {
-        // Your code here
-        Map<Integer, Integer> seen = new HashMap<>();
-        for (int i = 0; i < nums.length; i++) {
-            int complement = target - nums[i];
-            if (seen.containsKey(complement)) {
-                return new int[]{seen.get(complement), i};
-            }
-            seen.put(nums[i], i);
+public class Main {
+    public static void main(String[] args) {
+        Scanner sc = new Scanner(System.in);
+        if (sc.hasNextLine()) {
+            String s = sc.nextLine();
+            // Write your solution here and print the result
+            
         }
-        return new int[]{};
+        sc.close();
     }
 }`,
-  javascript: `/**
- * @param {number[]} nums
- * @param {number} target
- * @return {number[]}
- */
-var twoSum = function(nums, target) {
-    // Your code here
-    const seen = new Map();
-    for (let i = 0; i < nums.length; i++) {
-        const complement = target - nums[i];
-        if (seen.has(complement)) {
-            return [seen.get(complement), i];
-        }
-        seen.set(nums[i], i);
-    }
-    return [];
-};`,
+  javascript: `const fs = require('fs');
+
+function solve() {
+    const input = fs.readFileSync('/dev/stdin', 'utf-8').trim().split('\\n');
+    if (!input.length || !input[0]) return;
+    
+    const s = input[0].trim();
+    // Write your solution here and console.log the result
+    
+}
+
+solve();`,
 };

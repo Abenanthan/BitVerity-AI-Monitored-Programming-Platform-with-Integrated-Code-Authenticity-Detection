@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import uuid
+import os
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
@@ -216,7 +217,6 @@ async def score_explain(
         explain_ai               * W_EXPLAIN,
         4,
     )
-    import os as _os
     new_final = max(0.0, min(1.0, new_final))
     new_verdict = scorer._verdict(new_final)
 

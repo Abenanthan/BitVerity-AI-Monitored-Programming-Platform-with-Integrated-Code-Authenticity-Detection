@@ -1,12 +1,15 @@
 const { Router } = require("express");
 const { body }   = require("express-validator");
 
-const { getMe, getProfile, getUserSubmissions, updateMe, leaderboard } =
+const { getMe, getProfile, getUserSubmissions, updateMe, leaderboard, getDashboardData } =
   require("../controllers/users.controller");
 const { authenticate } = require("../middleware/auth.middleware");
 const { validate }     = require("../middleware/validate.middleware");
 
 const router = Router();
+
+// GET  /api/users/dashboard
+router.get("/dashboard", authenticate, getDashboardData);
 
 // GET  /api/users/leaderboard
 router.get("/leaderboard", leaderboard);

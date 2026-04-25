@@ -1,5 +1,8 @@
 const { v4: uuidv4 } = require("uuid");
-const axios    = require("axios");
+const axios = require("axios");
+const fs = require("fs");
+const path = require("path");
+const { spawnSync } = require("child_process");
 const prisma   = require("../lib/prisma");
 const { getRedisClient } = require("../lib/redis");
 const AppError = require("../utils/AppError");
@@ -23,7 +26,7 @@ const LANGUAGE_IDS = {
 // ─────────────────────────────────────────────────────────────────────────────
 async function createSubmission(req, res, next) {
   try {
-    const { problemId, contestId, code, language, behaviorLog } = req.body;
+    const { problemId, contestId, code, language, behaviorLog, isRun, customInput } = req.body;
     const userId = req.user.id;
 
     const langId = LANGUAGE_IDS[language?.toLowerCase()];
@@ -32,9 +35,30 @@ async function createSubmission(req, res, next) {
 
     const problem = await prisma.problem.findUnique({
       where:   { id: problemId },
-      include: { testCases: { where: { isHidden: true } } },
+      include: { testCases: true }, // Fetch all test cases
     });
     if (!problem) return next(new AppError("Problem not found", 404, "NOT_FOUND"));
+
+    // ── Handle "Run Code" (Synchronous, no DB save) ──────────────────────────
+    if (isRun) {
+      let testCaseToRun;
+      if (customInput) {
+        testCaseToRun = { input: customInput, output: "N/A" };
+      } else {
+        testCaseToRun = problem.testCases.find(tc => tc.isHidden === false) || problem.testCases[0];
+      }
+
+      const runResult = executeLocally(code, langId, testCaseToRun.input, testCaseToRun.output, problem.timeLimit);
+      return res.status(200).json({
+        status: "success",
+        data: {
+          isRun: true,
+          verdict: runResult.status,
+          runtime: runResult.runtime,
+          output: runResult.stdout // I need to return actual stdout from executeLocally
+        }
+      });
+    }
 
     // ── 1. Store behavior log in Redis (KEY 1: behavior:{sessionId}) ──────────
     const sessionId = uuidv4();
@@ -80,6 +104,61 @@ async function createSubmission(req, res, next) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Internal: Local execution fallback (for when Judge0 API fails)
+// ─────────────────────────────────────────────────────────────────────────────
+function executeLocally(code, langId, input, expectedOutput, timeLimit) {
+  const tempDir = path.join(process.cwd(), "temp_execution");
+  if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir, { recursive: true });
+  
+  const fileId = uuidv4();
+  let filepath, command, args;
+  
+  if (langId === 71) { // python
+    filepath = path.join(tempDir, `${fileId}.py`);
+    fs.writeFileSync(filepath, code);
+    command = "python";
+    args = [filepath];
+  } else if (langId === 63) { // javascript
+    filepath = path.join(tempDir, `${fileId}.js`);
+    fs.writeFileSync(filepath, code);
+    command = "node";
+    args = [filepath];
+  } else {
+    return { status: "COMPILE_ERROR", runtime: 0, memory: 0 }; // Local unsupported for cpp/java without compile steps
+  }
+
+  const start = Date.now();
+  const child = spawnSync(command, args, {
+    input: input,
+    timeout: timeLimit,
+    encoding: "utf-8"
+  });
+  const runtime = Date.now() - start;
+
+  try { fs.unlinkSync(filepath); } catch (e) {}
+
+  const out = (child.stdout || "").trim();
+  const errOut = (child.stderr || "").trim();
+
+  if (child.error && child.error.code === 'ETIMEDOUT') {
+    return { status: "TIME_LIMIT_EXCEEDED", runtime, memory: 0, stdout: out, stderr: errOut };
+  }
+  if (child.status !== 0) {
+    return { status: "RUNTIME_ERROR", runtime, memory: 0, stdout: out, stderr: errOut };
+  }
+  
+  if (expectedOutput !== "N/A") {
+    const normalizedOut = out.replace(/\s+/g, '');
+    const normalizedExpected = expectedOutput.trim().replace(/\s+/g, '');
+    if (normalizedOut !== normalizedExpected) {
+      return { status: "WRONG_ANSWER", runtime, memory: 0, stdout: out, stderr: errOut };
+    }
+  }
+  
+  return { status: "ACCEPTED", runtime, memory: 0, stdout: out, stderr: errOut };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Internal: Judge0 execution pipeline
 // ─────────────────────────────────────────────────────────────────────────────
 async function judgeSubmission(submission, problem, code, langId, sessionId, contestId, behaviorLog) {
@@ -89,41 +168,83 @@ async function judgeSubmission(submission, problem, code, langId, sessionId, con
   let totalRuntime = 0;
   let totalMemory  = 0;
 
-  for (const tc of problem.testCases) {
-    const response = await axios.post(
-      `${JUDGE0_URL}/submissions?base64_encoded=false&wait=true`,
-      {
-        source_code:     code,
-        language_id:     langId,
-        stdin:           tc.input,
-        expected_output: tc.output,
-        cpu_time_limit:  problem.timeLimit / 1000,
-        memory_limit:    problem.memoryLimit * 1024,
-      },
-      {
-        headers: {
-          "X-RapidAPI-Key":  JUDGE0_KEY,
-          "X-RapidAPI-Host": "judge0-ce.p.rapidapi.com",
-          "Content-Type":    "application/json",
+  const testCaseResults = [];
+  try {
+    for (const tc of problem.testCases) {
+      const response = await axios.post(
+        `${JUDGE0_URL}/submissions?base64_encoded=false&wait=true`,
+        {
+          source_code:     code,
+          language_id:     langId,
+          stdin:           tc.input,
+          expected_output: tc.output,
+          cpu_time_limit:  problem.timeLimit / 1000,
+          memory_limit:    problem.memoryLimit * 1024,
         },
-        timeout: 30000,
+        {
+          headers: {
+            "X-RapidAPI-Key":  JUDGE0_KEY,
+            "X-RapidAPI-Host": new URL(JUDGE0_URL).hostname,
+            "Content-Type":    "application/json",
+          },
+          timeout: 10000,
+        }
+      );
+
+      const r = response.data;
+      totalRuntime += parseFloat(r.time || "0") * 1000;
+      totalMemory  += r.memory || 0;
+
+      const passed = r.status?.id === 3;
+      testCaseResults.push({
+        passed,
+        input: tc.isHidden ? null : tc.input,
+        output: tc.isHidden ? null : r.stdout,
+        expected: tc.isHidden ? null : tc.output,
+        status: r.status?.description
+      });
+
+      if (!passed) {
+        const verdictMap = {
+          4:  "WRONG_ANSWER",
+          5:  "TIME_LIMIT_EXCEEDED",
+          6:  "COMPILE_ERROR",
+          11: "RUNTIME_ERROR",
+          12: "MEMORY_LIMIT_EXCEEDED",
+        };
+        finalVerdict = verdictMap[r.status?.id] || "RUNTIME_ERROR";
+        // Continue checking other test cases to show full results?
+        // Usually, we stop at first failure for "Competitive Programming",
+        // but for a better UI we can continue. Let's continue for now.
       }
-    );
+    }
+  } catch (err) {
+    logger.warn(`Judge0 API failed (${err.message}). Falling back to FREE LOCAL EXECUTION...`);
+    
+    // Reset metrics for local fallback
+    finalVerdict = "ACCEPTED";
+    totalRuntime = 0;
+    totalMemory = 0;
+    testCaseResults.length = 0; // Clear partial Judge0 results
 
-    const r = response.data;
-    totalRuntime += parseFloat(r.time || "0") * 1000;
-    totalMemory  += r.memory || 0;
+    for (const tc of problem.testCases) {
+      const localResult = executeLocally(code, langId, tc.input, tc.output, problem.timeLimit);
+      
+      totalRuntime += localResult.runtime;
+      totalMemory += localResult.memory;
 
-    if (r.status?.id !== 3) {
-      const verdictMap = {
-        4:  "WRONG_ANSWER",
-        5:  "TIME_LIMIT_EXCEEDED",
-        6:  "COMPILE_ERROR",
-        11: "RUNTIME_ERROR",
-        12: "MEMORY_LIMIT_EXCEEDED",
-      };
-      finalVerdict = verdictMap[r.status?.id] || "RUNTIME_ERROR";
-      break;
+      const passed = localResult.status === "ACCEPTED";
+      testCaseResults.push({
+        passed,
+        input: tc.isHidden ? null : tc.input,
+        output: tc.isHidden ? null : localResult.stdout,
+        expected: tc.isHidden ? null : tc.output,
+        status: localResult.status
+      });
+
+      if (!passed) {
+        finalVerdict = localResult.status;
+      }
     }
   }
 
@@ -134,8 +255,14 @@ async function judgeSubmission(submission, problem, code, langId, sessionId, con
   // ── Update submission with judge result ────────────────────────────────────
   const updated = await prisma.submission.update({
     where: { id: submission.id },
-    data:  { verdict: finalVerdict, runtime: avgRuntime, memory: avgMemory },
+    data:  { 
+      verdict: finalVerdict, 
+      runtime: avgRuntime, 
+      memory: avgMemory,
+      testCaseResults: testCaseResults
+    },
   });
+
 
   // ── Update problem acceptance counter ──────────────────────────────────────
   await prisma.problem.update({
@@ -231,6 +358,7 @@ async function judgeSubmission(submission, problem, code, langId, sessionId, con
 // ─────────────────────────────────────────────────────────────────────────────
 async function runDetection(submission, behaviorLog) {
   try {
+    // ── 2. Run AI Analysis (Python service handles DB persistence) ──────────
     const { data } = await axios.post(`${DETECTION_URL}/detect/analyze`, {
       submissionId: submission.id,
       userId:       submission.userId,
@@ -239,33 +367,9 @@ async function runDetection(submission, behaviorLog) {
       behaviorLog:  behaviorLog || [],
     });
 
-    const report = data; // FastAPI returns it directly, not wrapped in { report: ... }
+    const report = data; 
 
-    await prisma.detectionReport.create({
-      data: {
-        submissionId:        submission.id,
-        behavioralScore:     report.behavioralScore,
-        codePatternScore:    report.codePatternScore,
-        fingerprintScore:    report.fingerprintScore,
-        explainabilityScore: 0.5,
-        finalAiScore:        report.finalAiScore,
-        aiVerdict:           report.aiVerdict,
-        flags:               report.flags,
-        trustScoreDelta:     report.trustScoreDelta,
-      },
-    });
-
-    await prisma.submission.update({
-      where: { id: submission.id },
-      data:  { aiScore: report.finalAiScore, aiVerdict: report.aiVerdict },
-    });
-
-    await prisma.user.update({
-      where: { id: submission.userId },
-      data:  { trustScore: { increment: report.trustScoreDelta } },
-    });
-
-    // Invalidate user cache after trust score change
+    // ── 3. Invalidate user cache and emit real-time result ──────────────────
     const redis = getRedisClient();
     await redis.del(`cache:user:${submission.userId}`);
 
@@ -275,14 +379,16 @@ async function runDetection(submission, behaviorLog) {
         room: `user:${submission.userId}`,
         event: "submission:detection",
         data: {
-          submissionId: submission.id,
-          aiScore: report.finalAiScore,
-          aiVerdict: report.aiVerdict,
-          flags: report.flags,
+          submissionId:    submission.id,
+          aiScore:         report.finalAiScore,
+          aiVerdict:       report.aiVerdict,
+          flags:           report.flags,
           trustScoreDelta: report.trustScoreDelta
         }
       })
     );
+
+    logger.info(`AI Analysis complete for ${submission.id}: score=${report.finalAiScore} verdict=${report.aiVerdict}`);
   } catch (err) {
     logger.warn(`Detection service unavailable for submission ${submission.id}: ${err.message}`);
   }
@@ -297,6 +403,7 @@ async function getSubmission(req, res, next) {
       where:   { id: req.params.id },
       include: {
         detectionReport: true,
+        user: { select: { trustScore: true } },
         problem: { select: { title: true, slug: true, difficulty: true } },
       },
     });

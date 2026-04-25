@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, Suspense, lazy } from 'react';
+import { useState, useEffect, useRef, Suspense, lazy } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   ChevronDown, ChevronUp, RotateCcw, Copy, Maximize2, Minus, Plus,
@@ -12,6 +12,7 @@ import { STARTER_CODE, ACTIVE_CONTESTS } from '../utils/constants';
 import { api } from '../utils/api';
 import { useSocket } from '../hooks/useSocket';
 import { useBehaviorTracker } from '../hooks/useBehaviorTracker';
+import React, { memo } from 'react';
 
 // ── Real code execution via Wandbox ──────────────────────────────
 async function runWandbox(code, language, stdin) {
@@ -38,28 +39,6 @@ async function runWandbox(code, language, stdin) {
 // Lazy-load Monaco
 const MonacoEditor = lazy(() => import('@monaco-editor/react'));
 
-const PROBLEM = {
-  title: 'Two Sum',
-  difficulty: 'Easy',
-  description: `Given an array of integers \`nums\` and an integer \`target\`, return indices of the two numbers such that they add up to target.
-
-You may assume that each input would have **exactly one solution**, and you may not use the same element twice.
-
-You can return the answer in any order.`,
-  inputFormat: 'First line: array of integers `nums`. Second line: integer `target`.',
-  outputFormat: 'Return two indices as an array.',
-  constraints: [
-    '2 ≤ nums.length ≤ 10⁴',
-    '-10⁹ ≤ nums[i] ≤ 10⁹',
-    '-10⁹ ≤ target ≤ 10⁹',
-    'Only one valid answer exists.',
-  ],
-  examples: [
-    { input: 'nums = [2,7,11,15]\ntarget = 9', output: '[0,1]', explanation: 'nums[0] + nums[1] = 2 + 7 = 9' },
-    { input: 'nums = [3,2,4]\ntarget = 6',      output: '[1,2]', explanation: 'nums[1] + nums[2] = 2 + 4 = 6' },
-  ],
-};
-
 const PROBLEMS_NAV = [
   { id: 1, title: 'Two Sum', difficulty: 'Easy', solved: true },
   { id: 2, title: 'Longest Palindrome', difficulty: 'Medium', solved: false },
@@ -68,8 +47,9 @@ const PROBLEMS_NAV = [
 ];
 
 export default function Contest() {
-  const { id }   = useParams();
+  const { id, slug } = useParams();
   const navigate = useNavigate();
+  const [problemData, setProblemData] = useState(null);
 
   // Editor state
   const [lang, setLang]         = useState('python');
@@ -80,99 +60,131 @@ export default function Contest() {
   const [verdict, setVerdict]   = useState(null);
   const [running, setRunning]   = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [leftOpen, setLeftOpen] = useState(true);
+  const [leftOpen, setLeftOpen]     = useState(true);
+  const [isExpanded, setIsExpanded] = useState(false);
   const [activeTab, setActiveTab] = useState(0);
   const [openExamples, setOpenExamples] = useState([0]);
 
   // Behavior tracking — replaces old useBehaviorMonitor
-  const { getLog, clearLog, getAnalysis } = useBehaviorTracker();
+  const { getLog, clearLog, getAnalysis, onKey } = useBehaviorTracker();
   const [pasteFlash, setPasteFlash] = useState(false);
   const editorWrapperRef = useRef(null);
 
   // Line/col tracking
   const [cursorPos, setCursorPos] = useState({ line: 1, col: 1 });
+  const editorRef = useRef(null); // Ref for Monaco instance
 
+  const targetSlug = slug || 'two-sum';
   const contest = ACTIVE_CONTESTS.find(c => c.id === id) || ACTIVE_CONTESTS[0];
 
-  // Mock socket
-  useSocket(id, (event) => {
-    if (event.type === 'contest_announcement') {
-      setOutput(prev => prev + `\n[CONTEST] ${event.data.message}`);
+  useEffect(() => {
+    async function loadProblem() {
+      try {
+        const data = await api.getProblem(targetSlug);
+        setProblemData({
+          ...data,
+          examples: data.testCases ? data.testCases.filter(t => !t.isHidden).map(t => ({ input: t.input, output: t.output })) : [],
+          constraints: data.constraints ? data.constraints.split('\n') : [],
+        });
+      } catch (err) {
+        console.error("Failed to load problem", err);
+      }
+    }
+    loadProblem();
+  }, [targetSlug]);
+
+  useSocket((event) => {
+    if (event.type === 'submission_verdict') {
+      const { submissionId, verdict: v, runtime, memory } = event.data;
+      const verdictMap = {
+        'ACCEPTED': 'accepted',
+        'WRONG_ANSWER': 'wrong',
+        'TIME_LIMIT_EXCEEDED': 'tle',
+        'COMPILE_ERROR': 'ce',
+        'RUNTIME_ERROR': 'wrong',
+        'MEMORY_LIMIT_EXCEEDED': 'mle',
+      };
+      const finalVerdict = verdictMap[v] || 'wrong';
+      setSubmitting(false);
+      setRunning(false);
+      setVerdict(finalVerdict);
+      setOutput(prev => prev + `\n\n━━━ Judge0 Result ━━━\nVerdict: ${v}\nRuntime: ${runtime}ms | Memory: ${(memory / 1024).toFixed(1)}KB`);
+      
+      // Navigate to results for any finished submission after a short delay
+      setTimeout(() => navigate(`/results/${submissionId}`), 3000);
+    } else if (event.type === 'detection_update') {
+      const { aiScore, aiVerdict, flags } = event.data;
+      const formattedFlags = flags && flags.length > 0 ? flags.map(f => f.detail || f.type).join(', ') : 'None';
+      setOutput(prev => prev + `\n\n━━━ AI Detection ━━━\nAI Probability: ${Math.round((aiScore || 0) * 100)}%\nVerdict: ${aiVerdict}\nFlags: ${formattedFlags}`);
     }
   });
 
   function handleLangChange(newLang) {
     setLang(newLang);
-    setCode(STARTER_CODE[newLang] || '');
+    const newCode = STARTER_CODE[newLang] || '';
+    setCode(newCode);
+    if (editorRef.current) editorRef.current.setValue(newCode);
     setVerdict(null);
     setOutput('');
   }
 
   function handleReset() {
-    setCode(STARTER_CODE[lang] || '');
+    const newCode = STARTER_CODE[lang] || '';
+    setCode(newCode);
+    if (editorRef.current) editorRef.current.setValue(newCode);
     setVerdict(null);
     setOutput('');
   }
 
   async function handleRun() {
+    if (!problemData) return;
     setRunning(true);
     setVerdict(null);
-    setOutput('▶ Running your code…');
-
-    // Pass customInput as stdin so both styles work:
-    // - Stdin-based: reads from input() → gets customInput lines
-    // - Class-based: add test calls at bottom; customInput is ignored
-    const { out, err, exitCode } = await runWandbox(code, lang, customInput);
-
-    let result = '';
-    if (out) result += out;
-    if (err) result += (result ? '\n' : '') + '--- Errors ---\n' + err;
-    if (!out && !err) result = '(no output)';
-    result += exitCode === 0 ? '\n\n✓ Exited with code 0' : `\n\n✗ Exited with code ${exitCode}`;
-
-    setOutput(result);
-    setRunning(false);
+    setOutput('⏳ Running your code...');
+    try {
+      const currentCode = editorRef.current ? editorRef.current.getValue() : code;
+      const customInputVal = document.getElementById('custom-input')?.value || null;
+      const result = await api.submitCode(null, problemData.id, currentCode, lang, getLog(), true, customInputVal);
+      
+      const { verdict: v, runtime, output: out } = result;
+      const verdictMap = {
+        'ACCEPTED': 'accepted',
+        'WRONG_ANSWER': 'wrong',
+        'TIME_LIMIT_EXCEEDED': 'tle',
+        'COMPILE_ERROR': 'ce',
+        'RUNTIME_ERROR': 'wrong',
+        'MEMORY_LIMIT_EXCEEDED': 'mle',
+      };
+      
+      setVerdict(verdictMap[v] || 'wrong');
+      setOutput(`━━━ Run Result ━━━\nVerdict: ${v}\nRuntime: ${runtime}ms\n\nOutput:\n${out || "No output"}`);
+      setRunning(false);
+    } catch (err) {
+      const msg = err.response?.data?.message || err.message;
+      setOutput(`❌ Error: ${msg}`);
+      setRunning(false);
+    }
   }
 
   async function handleSubmit() {
+    if (!problemData) return;
     setSubmitting(true);
     setVerdict(null);
-    setOutput('⏳ Judging submission…');
+    setOutput('⏳ Submitting code for final evaluation...');
     try {
-      // Capture behavior analysis before clearing
-      const analysis = getAnalysis();
-      const logs = getLog();
-      console.log('[AI Tracker] Analysis:', analysis);
-
-      const result = await api.submitCode(id, 'two-sum', code, lang, logs);
-
-      // Override AI score with real behavior analysis
-      if (result.aiAnalysis) {
-        result.aiAnalysis.overallScore    = analysis.score;
-        result.aiAnalysis.behavioral      = analysis.score;
-        result.aiAnalysis.flags           = analysis.flags;
-        result.aiAnalysis.behaviorSummary = analysis.summary;
-        result.aiAnalysis.stats           = analysis.stats;
-      }
-
-      setVerdict(result.verdict);
-      if (result.verdict === 'accepted') {
-        const passed = result.testCases.filter(t => t.passed).length;
-        setOutput(`✓ Accepted\nRuntime: ${result.runtime}\nMemory: ${result.memory}\n\n${passed}/${result.testCases.length} test cases passed!\n\nAI Detection Score: ${analysis.score}% suspicious\n${analysis.summary}`);
-        clearLog();
-        setTimeout(() => navigate(`/results/${result.id}`), 2500);
-      } else {
-        const failed = result.testCases.filter(t => !t.passed);
-        const details = failed.map(t =>
-          `✗ Input: ${t.input}\n  Expected: ${t.expected}\n  Got:      ${t.output}`
-        ).join('\n\n');
-        setOutput(`✗ Wrong Answer\n\n${details}`);
-      }
+      const currentCode = editorRef.current ? editorRef.current.getValue() : code;
+      const result = await api.submitCode(id || null, problemData.id, currentCode, lang, getLog());
+      setOutput(prev => prev + `\nSubmission ID: ${result.id}\nCode + behavior trace sent.\nWaiting for Judge0 + AI Detection...`);
     } catch (err) {
-      setOutput(`Error: ${err.message}`);
+      const msg = err.response?.data?.message || err.message;
+      setOutput(`❌ Submission Error: ${msg}`);
     } finally {
       setSubmitting(false);
     }
+  }
+
+  if (!problemData) {
+    return <div style={{ color: '#fff', textAlign: 'center', marginTop: '20vh' }}>Loading problem...</div>;
   }
 
   function handleEditorPaste() {
@@ -206,9 +218,9 @@ export default function Contest() {
           >
             ←
           </button>
-          <span style={{ fontWeight: 700, fontSize: 14, whiteSpace: 'nowrap' }}>{contest.name}</span>
+          <span style={{ fontWeight: 700, fontSize: 14, whiteSpace: 'nowrap' }}>{problemData.title}</span>
           <span style={{ color: 'rgba(255,255,255,0.15)', fontSize: 10 }}>|</span>
-          <DifficultyBadge level={PROBLEM.difficulty} />
+          <DifficultyBadge level={problemData.difficulty} />
         </div>
 
         <div style={{ flex: 1 }} />
@@ -221,7 +233,7 @@ export default function Contest() {
 
         <div style={{ flex: 1 }} />
 
-        {/* Problem tabs */}
+        {/* Problem tabs hidden when not in contest mode */}
         <div style={{ display: 'flex', gap: 4 }}>
           {PROBLEMS_NAV.map((p, i) => (
             <button
@@ -250,9 +262,9 @@ export default function Contest() {
 
         {/* LEFT PANEL — Problem statement */}
         <div style={{
-          width: leftOpen ? '30%' : 0,
-          minWidth: leftOpen ? 280 : 0,
-          maxWidth: leftOpen ? 420 : 0,
+          width: leftOpen && !isExpanded ? '30%' : 0,
+          minWidth: leftOpen && !isExpanded ? 280 : 0,
+          maxWidth: leftOpen && !isExpanded ? 420 : 0,
           background: 'var(--bg-surface)',
           borderRight: '1px solid var(--border)',
           overflow: 'hidden',
@@ -263,10 +275,10 @@ export default function Contest() {
             {/* Title */}
             <div style={{ marginBottom: 20 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
-                <h1 style={{ fontSize: 17, fontWeight: 700, letterSpacing: '-0.3px' }}>{PROBLEM.title}</h1>
+                <h1 style={{ fontSize: 17, fontWeight: 700, letterSpacing: '-0.3px' }}>{problemData.title}</h1>
               </div>
               <div style={{ display: 'flex', gap: 8 }}>
-                <DifficultyBadge level={PROBLEM.difficulty} />
+                <DifficultyBadge level={problemData.difficulty} />
                 <span style={{
                   fontSize: 11, padding: '2px 8px',
                   background: 'rgba(16,185,129,0.1)',
@@ -274,14 +286,14 @@ export default function Contest() {
                   borderRadius: 4, color: '#10B981',
                   fontFamily: 'JetBrains Mono, monospace',
                 }}>
-                  Acceptance: 67.2%
+                  Acceptance: {problemData.totalAttempts > 0 ? ((problemData.totalAccepted / problemData.totalAttempts) * 100).toFixed(1) : '0.0'}%
                 </span>
               </div>
             </div>
 
             {/* Description */}
-            <div style={{ fontSize: 13, lineHeight: 1.8, color: '#CBD5E1', marginBottom: 24 }}>
-              <ProblemText text={PROBLEM.description} />
+            <div style={{ fontSize: 13, lineHeight: 1.8, color: '#CBD5E1', marginBottom: 24, whiteSpace: 'pre-wrap' }}>
+              <ProblemText text={problemData.description} />
             </div>
 
             {/* Examples */}
@@ -289,7 +301,7 @@ export default function Contest() {
               <div style={{ fontSize: 11, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 12 }}>
                 Examples
               </div>
-              {PROBLEM.examples.map((ex, i) => (
+              {problemData.examples && problemData.examples.map((ex, i) => (
                 <div key={i} style={{
                   border: '1px solid var(--border)',
                   borderRadius: 8, marginBottom: 8, overflow: 'hidden',
@@ -335,28 +347,14 @@ export default function Contest() {
               <div style={{ fontSize: 11, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 12 }}>
                 Constraints
               </div>
-              <ul style={{ listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 6 }}>
-                {PROBLEM.constraints.map((c, i) => (
+              <ul style={{ listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 6, padding: 0 }}>
+                {problemData.constraints && problemData.constraints.map((c, i) => (
                   <li key={i} style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
                     <span style={{ color: '#7C3AED', fontFamily: 'JetBrains Mono, monospace', fontSize: 10, marginTop: 3 }}>►</span>
                     <code style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 12, color: '#CBD5E1' }}>{c}</code>
                   </li>
                 ))}
               </ul>
-            </div>
-
-            {/* Input/Output Format */}
-            <div style={{ marginBottom: 16 }}>
-              <div style={{ fontSize: 11, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 }}>
-                Input Format
-              </div>
-              <p style={{ fontSize: 12, color: '#94A3B8', lineHeight: 1.7 }}>{PROBLEM.inputFormat}</p>
-            </div>
-            <div>
-              <div style={{ fontSize: 11, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 }}>
-                Output Format
-              </div>
-              <p style={{ fontSize: 12, color: '#94A3B8', lineHeight: 1.7 }}>{PROBLEM.outputFormat}</p>
             </div>
           </div>
         </div>
@@ -442,11 +440,14 @@ export default function Contest() {
               <Copy size={13} /> Copy
             </button>
 
-            <button aria-label="Fullscreen" style={{
-              background: 'none', border: 'none', cursor: 'pointer',
-              color: '#64748B', padding: 4,
-            }}>
-              <Maximize2 size={14} />
+            <button 
+              aria-label={isExpanded ? "Collapse" : "Fullscreen"} 
+              onClick={() => setIsExpanded(!isExpanded)}
+              style={{
+                background: 'none', border: 'none', cursor: 'pointer',
+                color: '#64748B', padding: 4,
+              }}>
+              {isExpanded ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
             </button>
           </div>
 
@@ -468,8 +469,7 @@ export default function Contest() {
               <MonacoEditor
                 height="100%"
                 language={lang === 'cpp' ? 'cpp' : lang}
-                value={code}
-                onChange={(val) => setCode(val || '')}
+                defaultValue={code}
                 theme="vs-dark"
                 options={{
                   fontSize,
@@ -493,9 +493,12 @@ export default function Contest() {
                   scrollbar: { vertical: 'auto', horizontal: 'auto' },
                 }}
                 onMount={(editor) => {
+                  editorRef.current = editor;
                   editor.onDidChangeCursorPosition(e => {
                     setCursorPos({ line: e.position.lineNumber, col: e.position.column });
                   });
+                  // Bind behavior tracking directly to the editor's textarea
+                  editor.onKeyDown((e) => onKey(e.browserEvent));
                 }}
               />
             </Suspense>
@@ -630,34 +633,40 @@ export default function Contest() {
       </div>
 
       {/* ---- STATUS BAR ---- */}
-      <div className="status-bar" style={{ flexShrink: 0 }}>
-        <span style={{
-          color: lang === 'python' ? '#F59E0B' : lang === 'cpp' ? '#00D4FF' : lang === 'java' ? '#F59E0B' : '#10B981',
-          fontWeight: 600,
-        }}>
-          {lang.toUpperCase()}
-        </span>
-        <span>Ln {cursorPos.line}, Col {cursorPos.col}</span>
-        <span>Spaces: 4</span>
-        <span>UTF-8</span>
-        <div style={{ flex: 1 }} />
-        {getAnalysis && getAnalysis().stats && getAnalysis().stats.tabSwitches > 0 && (
-          <div
-            className="behavior-dot"
-            title={`AI Tracker: ${getAnalysis().stats.tabSwitches} tab switch(es), ${getAnalysis().stats.pastes} paste(s)`}
-            style={{ display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer' }}
-          >
-            <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#F59E0B', boxShadow: '0 0 6px rgba(245,158,11,0.6)' }} />
-            <span style={{ color: '#F59E0B', fontSize: 11 }}>
-              <AlertTriangle size={10} style={{ display: 'inline' }} /> Behavior flagged
-            </span>
-          </div>
-        )}
-        <span style={{ color: '#10B981' }}>● Connected</span>
-      </div>
+      <StatusBar lang={lang} cursorPos={cursorPos} analysis={getAnalysis()} />
     </div>
   );
 }
+
+const StatusBar = memo(({ lang, cursorPos, analysis }) => {
+  return (
+    <div className="status-bar" style={{ flexShrink: 0 }}>
+      <span style={{
+        color: lang === 'python' ? '#F59E0B' : lang === 'cpp' ? '#00D4FF' : lang === 'java' ? '#F59E0B' : '#10B981',
+        fontWeight: 600,
+      }}>
+        {lang.toUpperCase()}
+      </span>
+      <span>Ln {cursorPos.line}, Col {cursorPos.col}</span>
+      <span>Spaces: 4</span>
+      <span>UTF-8</span>
+      <div style={{ flex: 1 }} />
+      {analysis && analysis.stats && analysis.stats.tabSwitches > 0 && (
+        <div
+          className="behavior-dot"
+          title={`AI Tracker: ${analysis.stats.tabSwitches} tab switch(es), ${analysis.stats.pastes} paste(s)`}
+          style={{ display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer' }}
+        >
+          <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#F59E0B', boxShadow: '0 0 6px rgba(245,158,11,0.6)' }} />
+          <span style={{ color: '#F59E0B', fontSize: 11 }}>
+            <AlertTriangle size={10} style={{ display: 'inline' }} /> Behavior flagged
+          </span>
+        </div>
+      )}
+      <span style={{ color: '#10B981' }}>● Connected</span>
+    </div>
+  );
+});
 
 function Spinner({ dark }) {
   return (

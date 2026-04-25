@@ -76,20 +76,24 @@ def calculate(
     fp_score, fp_flags            = fingerprint
 
     # ── Weighted final score ───────────────────────────────────────────────────
-    # Scale weights to the 0.85 base (0.15 held for explainability)
+    # We give the Behavioral signal more weight if it's very high (definitive paste/burst)
+    b_weight = W_BEHAVIORAL
+    if b_score > 0.8:
+        b_weight += 0.4  # Boost behavioral importance for obvious pastes
+    
+    total_w = b_weight + W_CODE_PATTERN + W_FINGERPRINT
+    
     final = round(
-        (W_BEHAVIORAL   / _TOTAL_BASE) * b_score  * _TOTAL_BASE +
-        (W_CODE_PATTERN / _TOTAL_BASE) * cp_score * _TOTAL_BASE +
-        (W_FINGERPRINT  / _TOTAL_BASE) * fp_score * _TOTAL_BASE,
+        (b_weight / total_w) * b_score +
+        (W_CODE_PATTERN / total_w) * cp_score +
+        (W_FINGERPRINT / total_w) * fp_score,
         4,
     )
-    # Simplification — just use direct weighted sum over 0.85
-    final = round(
-        W_BEHAVIORAL   * b_score  +
-        W_CODE_PATTERN * cp_score +
-        W_FINGERPRINT  * fp_score,
-        4,
-    )
+    
+    # If behavioral is 1.0 (confirmed whole-code paste), force AI_GENERATED threshold
+    if b_score >= 1.0:
+        final = max(final, 0.82)
+        
     final = max(0.0, min(1.0, final))
 
     verdict     = _verdict(final)

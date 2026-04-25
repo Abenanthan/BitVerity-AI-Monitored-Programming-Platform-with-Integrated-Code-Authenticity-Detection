@@ -17,6 +17,11 @@ from sqlalchemy.dialects.postgresql import UUID, ARRAY
 from sqlalchemy.sql import func
 import uuid
 
+from dotenv import load_dotenv
+import os
+
+load_dotenv()
+
 # ── Engine ─────────────────────────────────────────────────────────────────────
 # Uses asyncpg driver:  postgresql+asyncpg://...
 _RAW_URL = os.getenv(
@@ -27,6 +32,9 @@ _RAW_URL = os.getenv(
 ASYNC_URL = _RAW_URL.replace("postgresql://", "postgresql+asyncpg://").replace(
     "postgresql+psycopg2://", "postgresql+asyncpg://"
 )
+# Strip query parameters like ?schema=public (unsupported by asyncpg)
+if "?" in ASYNC_URL:
+    ASYNC_URL = ASYNC_URL.split("?")[0]
 
 engine = create_async_engine(
     ASYNC_URL,
@@ -70,8 +78,12 @@ class StyleProfile(Base):
     preferredLoops     = Column(String(10), default="for")
     embeddingVector    = Column(ARRAY(Float), default=list)
     sampleCount        = Column(Integer, default=0)
-    updatedAt          = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    updatedAt          = Column(DateTime, default=func.now(), onupdate=func.now())
 
+
+from sqlalchemy.dialects.postgresql import UUID, ARRAY, ENUM
+
+ai_verdict_enum = ENUM('HUMAN', 'SUSPICIOUS', 'AI_GENERATED', name='AiVerdict', create_type=False)
 
 class DetectionReport(Base):
     """Maps to the detection_reports table created by Prisma."""
@@ -84,10 +96,10 @@ class DetectionReport(Base):
     fingerprintScore    = Column(Float, nullable=False)
     explainabilityScore = Column(Float, default=0.5)
     finalAiScore        = Column(Float, nullable=False)
-    aiVerdict           = Column(String(20), nullable=False)
+    aiVerdict           = Column(ai_verdict_enum, nullable=False)
     flags               = Column(JSON, nullable=False, default=list)
     trustScoreDelta     = Column(Float, nullable=False)
-    createdAt           = Column(DateTime(timezone=True), server_default=func.now())
+    createdAt           = Column(DateTime, default=func.now())
 
 
 class Submission(Base):
@@ -97,7 +109,7 @@ class Submission(Base):
     id        = Column(UUID(as_uuid=False), primary_key=True, default=_uuid)
     userId    = Column(UUID(as_uuid=False), nullable=False)
     aiScore   = Column(Float, nullable=True)
-    aiVerdict = Column(String(20), nullable=True)
+    aiVerdict = Column(ai_verdict_enum, nullable=True)
 
 
 class User(Base):

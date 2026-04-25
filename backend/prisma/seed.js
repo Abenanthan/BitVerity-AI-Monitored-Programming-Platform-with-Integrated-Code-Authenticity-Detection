@@ -27,10 +27,28 @@ async function main() {
   });
   console.log(`✅  User created: ${admin.username}`);
 
+  // Clear existing test cases to ensure new ones are added on re-seed
+  await prisma.testCase.deleteMany({
+    where: { problem: { slug: { in: ["two-sum", "longest-substring-without-repeating-characters"] } } }
+  });
+
   // ── 2. Sample Problem — Two Sum ────────────────────────────────
   const twoSum = await prisma.problem.upsert({
     where: { slug: "two-sum" },
-    update: {},
+    update: {
+      testCases: {
+        create: [
+          { input: "[2,7,11,15]\n9", output: "[0,1]", isHidden: false },
+          { input: "[3,2,4]\n6",      output: "[1,2]", isHidden: true  },
+          { input: "[3,3]\n6",        output: "[0,1]", isHidden: true  },
+          { input: "[0,4,3,0]\n0",    output: "[0,3]", isHidden: true  },
+          { input: "[-1,-2,-3,-4,-5]\n-8", output: "[2,4]", isHidden: true },
+          { input: "[10,20,30,40,50,60,70,80,90,100]\n190", output: "[8,9]", isHidden: true },
+          { input: "[1,1,1,1,1,4,1,1,1,1]\n5", output: "[0,5]", isHidden: true },
+          { input: "[1000000000, 1000000000]\n2000000000", output: "[0,1]", isHidden: true },
+        ],
+      },
+    },
     create: {
       title: "Two Sum",
       slug: "two-sum",
@@ -49,6 +67,11 @@ async function main() {
           { input: "[2,7,11,15]\n9", output: "[0,1]", isHidden: false },
           { input: "[3,2,4]\n6",      output: "[1,2]", isHidden: true  },
           { input: "[3,3]\n6",        output: "[0,1]", isHidden: true  },
+          { input: "[0,4,3,0]\n0",    output: "[0,3]", isHidden: true  },
+          { input: "[-1,-2,-3,-4,-5]\n-8", output: "[2,4]", isHidden: true },
+          { input: "[10,20,30,40,50,60,70,80,90,100]\n190", output: "[8,9]", isHidden: true },
+          { input: "[1,1,1,1,1,4,1,1,1,1]\n5", output: "[0,5]", isHidden: true },
+          { input: "[1000000000, 1000000000]\n2000000000", output: "[0,1]", isHidden: true },
         ],
       },
     },
@@ -58,7 +81,22 @@ async function main() {
   // ── 3. Sample Problem — Longest Substring Without Repeating ────
   const longestSub = await prisma.problem.upsert({
     where: { slug: "longest-substring-without-repeating-characters" },
-    update: {},
+    update: {
+      testCases: {
+        create: [
+          { input: "abcabcbb", output: "3", isHidden: false },
+          { input: "bbbbb",    output: "1", isHidden: true  },
+          { input: "pwwkew",   output: "3", isHidden: true  },
+          { input: " ",        output: "1", isHidden: true  },
+          { input: "au",       output: "2", isHidden: true  },
+          { input: "dvdf",     output: "3", isHidden: true  },
+          { input: "abcdefghijklmnopqrstuvwxyz", output: "26", isHidden: true },
+          { input: "aab",      output: "2", isHidden: true  },
+          { input: "cdd",      output: "2", isHidden: true  },
+          { input: "abba",     output: "2", isHidden: true  },
+        ],
+      },
+    },
     create: {
       title: "Longest Substring Without Repeating Characters",
       slug: "longest-substring-without-repeating-characters",
@@ -77,6 +115,13 @@ async function main() {
           { input: "abcabcbb", output: "3", isHidden: false },
           { input: "bbbbb",    output: "1", isHidden: true  },
           { input: "pwwkew",   output: "3", isHidden: true  },
+          { input: " ",        output: "1", isHidden: true  },
+          { input: "au",       output: "2", isHidden: true  },
+          { input: "dvdf",     output: "3", isHidden: true  },
+          { input: "abcdefghijklmnopqrstuvwxyz", output: "26", isHidden: true },
+          { input: "aab",      output: "2", isHidden: true  },
+          { input: "cdd",      output: "2", isHidden: true  },
+          { input: "abba",     output: "2", isHidden: true  },
         ],
       },
     },

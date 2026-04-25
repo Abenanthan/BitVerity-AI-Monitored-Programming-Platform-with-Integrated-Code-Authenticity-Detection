@@ -155,4 +155,72 @@ async function leaderboard(req, res, next) {
   }
 }
 
-module.exports = { getMe, getProfile, getUserSubmissions, updateMe, leaderboard };
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/users/dashboard
+// ─────────────────────────────────────────────────────────────────────────────
+async function getDashboardData(req, res, next) {
+  try {
+    const userId = req.user.id;
+
+    const [user, recentSubmissions, activeContests, recommendedProblems] = await Promise.all([
+      prisma.user.findUnique({
+        where: { id: userId },
+        select: { trustScore: true, totalSolved: true, username: true }
+      }),
+      prisma.submission.findMany({
+        where: { userId },
+        orderBy: { submittedAt: "desc" },
+        take: 5,
+        select: {
+          id: true, verdict: true, language: true, aiScore: true, submittedAt: true,
+          problem: { select: { title: true, slug: true } }
+        }
+      }),
+      prisma.contest.findMany({
+        where: { endTime: { gt: new Date() } },
+        take: 2,
+        orderBy: { startTime: "asc" },
+        select: { id: true, title: true, startTime: true, endTime: true, _count: { select: { contestUsers: true, problems: true } } }
+      }),
+      prisma.problem.findMany({
+        where: {
+          submissions: {
+            none: { userId, verdict: "ACCEPTED" }
+          }
+        },
+        take: 3,
+        orderBy: { createdAt: "desc" },
+        select: { id: true, title: true, slug: true, difficulty: true, topics: true }
+      })
+    ]);
+
+    // Calculate AI Flags (submissions with high AI score)
+    const aiFlags = await prisma.submission.count({
+      where: { userId, aiScore: { gte: 0.7 } }
+    });
+
+    res.json({
+      success: true,
+      data: {
+        stats: {
+          trustScore: user.trustScore,
+          problemsSolved: user.totalSolved,
+          contestsWon: 0, // Mocked for now
+          currentStreak: 0, // Mocked for now
+          aiFlags
+        },
+        recentSubmissions,
+        activeContests: activeContests.map(c => ({
+          ...c,
+          participantCount: c._count.contestUsers,
+          problemCount: c._count.problems
+        })),
+        recommendedProblems
+      }
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+module.exports = { getMe, getProfile, getUserSubmissions, updateMe, leaderboard, getDashboardData };

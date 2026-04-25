@@ -10,25 +10,51 @@ import AiDetectionBadge from '../components/AiDetectionBadge';
 import DifficultyBadge from '../components/DifficultyBadge';
 import VerdictBanner from '../components/VerdictBanner';
 import ContestTimer from '../components/ContestTimer';
-import { SAMPLE_SUBMISSIONS, ACTIVE_CONTESTS } from '../utils/constants';
-
-const STATS = [
-  { label: 'Problems Solved', value: 247, icon: CheckCircle2, color: '#10B981' },
-  { label: 'Contests Won', value: 12, icon: Trophy, color: '#F59E0B' },
-  { label: 'Current Streak', value: '9d', icon: Flame, color: '#EF4444' },
-  { label: 'AI Flags', value: 0, icon: AlertTriangle, color: '#64748B' },
-];
-
-const RECOMMENDED = [
-  { id: 3, title: 'Median of Two Sorted Arrays', difficulty: 'Hard', topics: ['Array', 'Binary Search'] },
-  { id: 11, title: 'Coin Change', difficulty: 'Medium', topics: ['Dynamic Programming'] },
-  { id: 1, title: 'Two Sum', difficulty: 'Easy', topics: ['Array', 'Hash Table'] },
-];
+import { api } from '../utils/api';
 
 export default function Dashboard() {
   const navigate = useNavigate();
   const [search, setSearch] = useState('');
-  const [trustScore] = useState(78);
+  const [loading, setLoading] = useState(true);
+  const [data, setData] = useState(null);
+  const [user, setUser] = useState(null);
+
+  useEffect(() => {
+    async function loadData() {
+      try {
+        const [dashboardData, userData] = await Promise.all([
+          api.getDashboardData(),
+          api.getMe()
+        ]);
+        setData(dashboardData);
+        setUser(userData);
+      } catch (err) {
+        console.error('Failed to load dashboard data:', err);
+      } finally {
+        setLoading(false);
+      }
+    }
+    loadData();
+  }, []);
+
+  if (loading || !data) {
+    return (
+      <div style={{ display: 'flex', height: '100vh', background: '#0D0D12', alignItems: 'center', justifyContent: 'center', color: '#64748B' }}>
+        <div className="pulse" style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 13 }}>INITIALIZING DASHBOARD...</div>
+      </div>
+    );
+  }
+
+  const { stats, recentSubmissions, activeContests, recommendedProblems } = data;
+
+  const STAT_CARDS = [
+    { label: 'Problems Solved', value: stats.problemsSolved, icon: CheckCircle2, color: '#10B981' },
+    { label: 'Contests Won', value: stats.contestsWon, icon: Trophy, color: '#F59E0B' },
+    { label: 'Current Streak', value: stats.currentStreak + 'd', icon: Flame, color: '#EF4444' },
+    { label: 'AI Flags', value: stats.aiFlags, icon: AlertTriangle, color: '#64748B' },
+  ];
+
+  const firstName = user?.username || 'Developer';
 
   return (
     <div style={{ display: 'flex', minHeight: '100vh', background: 'var(--bg-base)', fontFamily: 'Inter, sans-serif' }}>
@@ -75,18 +101,18 @@ export default function Dashboard() {
           </button>
 
           {/* User avatar */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }} onClick={() => navigate('/profile')}>
             <div style={{
               width: 34, height: 34, borderRadius: '50%',
               background: 'linear-gradient(135deg, #00D4FF, #7C3AED)',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               fontSize: 13, fontWeight: 700, color: '#fff',
             }}>
-              AC
+              {firstName.substring(0, 2).toUpperCase()}
             </div>
             <div>
-              <div style={{ fontSize: 13, fontWeight: 600 }}>Ashwin  </div>
-              <div style={{ fontSize: 11, color: '#64748B' }}>@Ashwin </div>
+              <div style={{ fontSize: 13, fontWeight: 600 }}>{firstName}</div>
+              <div style={{ fontSize: 11, color: '#64748B' }}>@{user?.username}</div>
             </div>
           </div>
         </header>
@@ -95,7 +121,7 @@ export default function Dashboard() {
         <main style={{ flex: 1, padding: '28px 28px', overflowY: 'auto' }} className="page-enter">
           {/* Page header */}
           <div style={{ marginBottom: 28 }}>
-            <h1 style={{ fontSize: 22, fontWeight: 700, letterSpacing: '-0.5px', marginBottom: 4 }}>Good morning, Ashwin  👋</h1>
+            <h1 style={{ fontSize: 22, fontWeight: 700, letterSpacing: '-0.5px', marginBottom: 4 }}>Welcome back, {firstName} 👋</h1>
             <p style={{ color: '#64748B', fontSize: 13 }}>Here's your coding activity at a glance.</p>
           </div>
 
@@ -103,11 +129,11 @@ export default function Dashboard() {
           <div style={{ display: 'grid', gridTemplateColumns: '240px 1fr', gap: 20, marginBottom: 24 }}>
             {/* Trust score card */}
             <div className="card" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 16 }}>
-              <TrustScoreRing score={trustScore} size={130} />
+              <TrustScoreRing score={stats.trustScore} size={130} />
               <div style={{ textAlign: 'center' }}>
                 <div style={{ fontSize: 12, color: '#64748B', marginBottom: 4 }}>
                   <TrendingUp size={12} style={{ display: 'inline', marginRight: 4, color: '#10B981' }} />
-                  +2 this week
+                  Verified Status
                 </div>
                 <div style={{
                   fontSize: 11, padding: '3px 10px',
@@ -115,14 +141,14 @@ export default function Dashboard() {
                   borderRadius: 4, color: '#10B981', fontFamily: 'JetBrains Mono, monospace',
                   display: 'inline-block',
                 }}>
-                  VERIFIED DEVELOPER
+                  {stats.trustScore >= 80 ? 'EXPERT DEVELOPER' : 'VERIFIED DEVELOPER'}
                 </div>
               </div>
             </div>
 
             {/* Stats row */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16 }}>
-              {STATS.map(s => {
+              {STAT_CARDS.map(s => {
                 const Icon = s.icon;
                 return (
                   <div key={s.label} className="card card-hover" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -167,9 +193,9 @@ export default function Dashboard() {
                   </tr>
                 </thead>
                 <tbody>
-                  {SAMPLE_SUBMISSIONS.map(sub => (
+                  {recentSubmissions.map(sub => (
                     <tr key={sub.id} style={{ cursor: 'pointer' }} onClick={() => navigate(`/results/${sub.id}`)}>
-                      <td style={{ fontWeight: 500 }}>{sub.problem}</td>
+                      <td style={{ fontWeight: 500 }}>{sub.problem.title}</td>
                       <td>
                         <span style={{
                           fontFamily: 'JetBrains Mono, monospace',
@@ -177,13 +203,20 @@ export default function Dashboard() {
                           background: 'rgba(255,255,255,0.04)',
                           padding: '2px 8px', borderRadius: 4,
                           border: '1px solid rgba(255,255,255,0.06)',
-                        }}>{sub.lang}</span>
+                        }}>{sub.language}</span>
                       </td>
                       <td><VerdictBanner verdict={sub.verdict} compact /></td>
                       <td><AiDetectionBadge score={sub.aiScore} compact /></td>
-                      <td style={{ color: '#64748B', fontSize: 12, fontFamily: 'JetBrains Mono, monospace' }}>{sub.time}</td>
+                      <td style={{ color: '#64748B', fontSize: 12, fontFamily: 'JetBrains Mono, monospace' }}>
+                        {new Date(sub.submittedAt).toLocaleDateString()}
+                      </td>
                     </tr>
                   ))}
+                  {recentSubmissions.length === 0 && (
+                    <tr>
+                      <td colSpan="5" style={{ textAlign: 'center', py: 20, color: '#64748B', fontSize: 13 }}>No submissions yet. Start coding!</td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             </div>
@@ -200,7 +233,7 @@ export default function Dashboard() {
                 }} />
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
-                {ACTIVE_CONTESTS.map(contest => (
+                {activeContests.map(contest => (
                   <div
                     key={contest.id}
                     onClick={() => navigate(`/contest/${contest.id}`)}
@@ -215,24 +248,24 @@ export default function Dashboard() {
                   >
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
                       <div>
-                        <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 4 }}>{contest.name}</div>
+                        <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 4 }}>{contest.title}</div>
                         <div style={{ display: 'flex', gap: 12, fontSize: 11, color: '#64748B' }}>
                           <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                            <Code2 size={10} /> {contest.problems} problems
+                            <Code2 size={10} /> {contest.problemCount} problems
                           </span>
                           <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                            <Users size={10} /> {contest.participants.toLocaleString()}
+                            <Users size={10} /> {contest.participantCount.toLocaleString()}
                           </span>
                         </div>
                       </div>
-                      <ContestTimer endsAt={contest.endsAt} />
+                      <ContestTimer endsAt={contest.endTime} />
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <span style={{ fontSize: 11, color: '#64748B', display: 'flex', alignItems: 'center', gap: 4 }}>
                         <Clock size={10} /> Ends in
                       </span>
                       <button
-                        aria-label={`Join ${contest.name}`}
+                        aria-label={`Join ${contest.title}`}
                         onClick={e => { e.stopPropagation(); navigate(`/contest/${contest.id}`); }}
                         className="btn-primary"
                         style={{ fontSize: 11, padding: '5px 14px' }}
@@ -242,6 +275,9 @@ export default function Dashboard() {
                     </div>
                   </div>
                 ))}
+                {activeContests.length === 0 && (
+                  <div style={{ padding: 20, textAlign: 'center', color: '#64748B', fontSize: 13 }}>No active contests right now.</div>
+                )}
               </div>
             </div>
           </div>
@@ -255,10 +291,10 @@ export default function Dashboard() {
               </Link>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 0 }}>
-              {RECOMMENDED.map((p, i) => (
+              {recommendedProblems.map((p, i) => (
                 <div
                   key={p.id}
-                  onClick={() => navigate(`/contest/weekly-42`)}
+                  onClick={() => navigate(`/problem/${p.slug}`)}
                   style={{
                     padding: '16px 20px',
                     borderRight: i < 2 ? '1px solid var(--border)' : 'none',
@@ -269,7 +305,7 @@ export default function Dashboard() {
                   onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                 >
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
-                    <span style={{ fontSize: 12, color: '#64748B', fontFamily: 'JetBrains Mono, monospace' }}>#{p.id}</span>
+                    <span style={{ fontSize: 12, color: '#64748B', fontFamily: 'JetBrains Mono, monospace' }}>#{p.slug.substring(0, 4)}</span>
                     <DifficultyBadge level={p.difficulty} />
                   </div>
                   <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 10 }}>{p.title}</div>
@@ -285,6 +321,9 @@ export default function Dashboard() {
                   </div>
                 </div>
               ))}
+              {recommendedProblems.length === 0 && (
+                <div style={{ gridColumn: 'span 3', padding: 20, textAlign: 'center', color: '#64748B', fontSize: 13 }}>No recommendations at the moment.</div>
+              )}
             </div>
           </div>
         </main>
