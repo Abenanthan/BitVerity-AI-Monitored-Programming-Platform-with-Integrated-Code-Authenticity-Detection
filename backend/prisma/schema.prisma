@@ -159,7 +159,7 @@ model DetectionReport {
   behavioralScore     Float                        // 0.0 – 1.0
   codePatternScore    Float                        // 0.0 – 1.0
   fingerprintScore    Float                        // 0.0 – 1.0
-  explainabilityScore Float                        // 0.0 – 1.0
+  explainabilityScore Float?                       // 0.0 – 1.0, null until test is completed
   finalAiScore        Float                        // weighted aggregate
   aiVerdict           AiVerdict
   flags               Json       @db.JsonB         // array of flag objects

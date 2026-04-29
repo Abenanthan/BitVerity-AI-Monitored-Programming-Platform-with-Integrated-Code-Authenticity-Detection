@@ -8,6 +8,7 @@ import DifficultyBadge from '../components/DifficultyBadge';
 import ContestTimer from '../components/ContestTimer';
 import LanguageSelector from '../components/LanguageSelector';
 import VerdictBanner from '../components/VerdictBanner';
+import ExplainabilityTest from '../components/ExplainabilityTest';
 import { STARTER_CODE, ACTIVE_CONTESTS } from '../utils/constants';
 import { api } from '../utils/api';
 import { useSocket } from '../hooks/useSocket';
@@ -65,6 +66,9 @@ export default function Contest() {
   const [activeTab, setActiveTab] = useState(0);
   const [openExamples, setOpenExamples] = useState([0]);
 
+  const [showExplainTest, setShowExplainTest] = useState(false);
+  const [activeSubmissionId, setActiveSubmissionId] = useState(null);
+
   // Behavior tracking — replaces old useBehaviorMonitor
   const { getLog, clearLog, getAnalysis, onKey } = useBehaviorTracker();
   const [pasteFlash, setPasteFlash] = useState(false);
@@ -110,8 +114,11 @@ export default function Contest() {
       setVerdict(finalVerdict);
       setOutput(prev => prev + `\n\n━━━ Judge0 Result ━━━\nVerdict: ${v}\nRuntime: ${runtime}ms | Memory: ${(memory / 1024).toFixed(1)}KB`);
       
-      // Navigate to results for any finished submission after a short delay
-      setTimeout(() => navigate(`/results/${submissionId}`), 3000);
+      if (finalVerdict === 'accepted') {
+        setActiveSubmissionId(submissionId);
+        setShowExplainTest(true);
+      }
+      // Do not navigate automatically if the user fails. Let them stay and try again.
     } else if (event.type === 'detection_update') {
       const { aiScore, aiVerdict, flags } = event.data;
       const formattedFlags = flags && flags.length > 0 ? flags.map(f => f.detail || f.type).join(', ') : 'None';
@@ -503,6 +510,18 @@ export default function Contest() {
               />
             </Suspense>
           </div>
+
+          {showExplainTest && (
+            <ExplainabilityTest 
+              submissionId={activeSubmissionId}
+              code={editorRef.current ? editorRef.current.getValue() : code}
+              language={lang}
+              onComplete={() => {
+                setShowExplainTest(false);
+                navigate(`/results/${activeSubmissionId}`);
+              }}
+            />
+          )}
         </div>
 
         {/* RIGHT PANEL — Controls */}

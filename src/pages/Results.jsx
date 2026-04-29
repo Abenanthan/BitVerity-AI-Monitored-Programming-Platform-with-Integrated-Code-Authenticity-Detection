@@ -37,15 +37,17 @@ export default function Results() {
         // Start animations
         setTimeout(() => setAnimating(true), 100);
 
-        // If detection report is missing, poll every 3s
-        if (!data.detectionReport && !pollInterval) {
+        // Poll if no report yet, OR if report exists but explainability hasn't been scored yet
+        const needsPoll = !data.detectionReport || data.detectionReport.explainabilityScore === null;
+        if (needsPoll && !pollInterval) {
           pollInterval = setInterval(async () => {
             const updated = await api.getResults(id);
-            if (updated.detectionReport) {
+            const hasExplainability = updated.detectionReport?.explainabilityScore !== null;
+            if (updated.detectionReport && hasExplainability) {
               setResult(updated);
               clearInterval(pollInterval);
             }
-          }, 3000);
+          }, 2000);
         }
       } catch (err) {
         console.error("Failed to load results:", err);
@@ -299,9 +301,12 @@ export default function Results() {
                 {/* Metric breakdowns */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginBottom: 20 }}>
                   {DETECTION_METRICS.map(m => {
-                    const mappedKey = m.key + 'Score'; // map 'behavioral' to 'behavioralScore'
-                    const val = Math.round((ai[mappedKey] || 0) * 100);
+                    const mappedKey = m.key + 'Score';
+                    const rawVal = ai[mappedKey];
+                    const isPending = rawVal === null || rawVal === undefined;
+                    const val = isPending ? 0 : Math.round(rawVal * 100);
                     const barColor =
+                      isPending ? '#64748B' :
                       val < 30 ? '#10B981' :
                         val < 61 ? '#F59E0B' :
                           '#EF4444';
@@ -315,14 +320,14 @@ export default function Results() {
                             fontFamily: 'JetBrains Mono, monospace',
                             fontSize: 12, fontWeight: 700, color: barColor,
                           }}>
-                            {val}%
+                            {isPending ? '⏳ Pending' : `${val}%`}
                           </span>
                         </div>
                         <div className="progress-bar-track">
                           <div
                             className="progress-bar-fill"
                             style={{
-                              width: animating ? `${val}%` : '0%',
+                              width: (animating && !isPending) ? `${val}%` : '0%',
                               background: `linear-gradient(90deg, ${barColor}, ${barColor}aa)`,
                               boxShadow: `0 0 8px ${barColor}60`,
                               transition: animating ? 'width 1.2s cubic-bezier(0.4,0,0.2,1)' : 'none',

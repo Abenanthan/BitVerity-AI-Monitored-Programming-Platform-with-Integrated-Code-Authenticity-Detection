@@ -44,7 +44,8 @@ const VERDICTS = {
 };
 
 export default function VerdictBanner({ verdict = 'accepted', compact = false }) {
-  const v = VERDICTS[verdict] || VERDICTS.wrong;
+  const normalizedVerdict = typeof verdict === 'string' ? verdict.toLowerCase() : 'wrong';
+  const v = VERDICTS[normalizedVerdict] || VERDICTS.wrong;
   const Icon = v.icon;
 
   if (compact) {

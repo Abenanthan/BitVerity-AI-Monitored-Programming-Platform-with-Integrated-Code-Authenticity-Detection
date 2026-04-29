@@ -52,7 +52,7 @@ async def _save_detection_report(
         behavioralScore     = result.behavioral_score,
         codePatternScore    = result.code_pattern_score,
         fingerprintScore    = result.fingerprint_score,
-        explainabilityScore = 0.5,  # placeholder until /explain called
+        explainabilityScore = None,   # null until explainability test completes
         finalAiScore        = result.final_ai_score,
         aiVerdict           = result.ai_verdict,
         flags               = [f for f in result.flags],

@@ -94,7 +94,7 @@ class DetectionReport(Base):
     behavioralScore     = Column(Float, nullable=False)
     codePatternScore    = Column(Float, nullable=False)
     fingerprintScore    = Column(Float, nullable=False)
-    explainabilityScore = Column(Float, default=0.5)
+    explainabilityScore = Column(Float, nullable=True, default=None)
     finalAiScore        = Column(Float, nullable=False)
     aiVerdict           = Column(ai_verdict_enum, nullable=False)
     flags               = Column(JSON, nullable=False, default=list)
