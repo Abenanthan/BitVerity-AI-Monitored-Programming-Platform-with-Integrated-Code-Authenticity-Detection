@@ -4,7 +4,9 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 // Lazy load all pages for code splitting
 const Landing  = lazy(() => import('./pages/Landing'));
 const Login    = lazy(() => import('./pages/Login'));
+const Register = lazy(() => import('./pages/Register'));
 const Dashboard = lazy(() => import('./pages/Dashboard'));
+const AuthCallback = lazy(() => import('./pages/AuthCallback'));
 const Problems = lazy(() => import('./pages/Problems'));
 const Contest  = lazy(() => import('./pages/Contest'));
 const Results  = lazy(() => import('./pages/Results'));
@@ -63,6 +65,8 @@ export default function App() {
           <Route path="/"             element={<Navigate to="/landing" replace />} />
           <Route path="/landing"      element={<Landing />} />
           <Route path="/login"        element={<Login />} />
+          <Route path="/register"     element={<Register />} />
+          <Route path="/auth/callback" element={<AuthCallback />} />
           <Route path="/dashboard"    element={<Dashboard />} />
           <Route path="/problems"     element={<Problems />} />
           <Route path="/contest/:id"  element={<Contest />} />

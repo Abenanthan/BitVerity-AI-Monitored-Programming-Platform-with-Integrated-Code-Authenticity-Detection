@@ -70,7 +70,7 @@ export default function TrustScoreRing({ score = 78, size = 120, strokeWidth = 8
             color,
             lineHeight: 1,
           }}>
-            {score}
+            {Number(score).toFixed(2)}
           </span>
           <span style={{
             fontSize: 10,

@@ -28,7 +28,7 @@ router.post(
   submissionRateLimit,
   [
     body("problemId").isUUID(),
-    body("contestId").optional().isUUID(),
+    body("contestId").optional({ nullable: true, checkFalsy: true }).isUUID(),
     body("code").notEmpty().isLength({ max: 65535 }),
     body("language").isIn(["python", "java", "cpp", "javascript"]),
     body("behaviorLog").optional().isArray(),

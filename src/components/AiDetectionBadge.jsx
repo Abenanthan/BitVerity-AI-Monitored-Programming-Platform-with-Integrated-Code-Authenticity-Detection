@@ -42,7 +42,7 @@ export default function AiDetectionBadge({ score = 0, compact = false }) {
         flexShrink: 0,
         boxShadow: `0 0 6px ${color}`,
       }} />
-      {score}% {label}
+      {Number(score).toFixed(2)}% {label}
     </span>
   );
 }

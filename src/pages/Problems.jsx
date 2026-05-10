@@ -212,7 +212,7 @@ export default function Problems() {
                 </tr>
               </thead>
               <tbody>
-                {paged.map(p => (
+                {paged.map((p, i) => (
                   <tr
                     key={p.id}
                     style={{ cursor: 'pointer', position: 'relative' }}
@@ -220,7 +220,7 @@ export default function Problems() {
                     onMouseEnter={() => setHoveredRow(p.id)}
                     onMouseLeave={() => setHoveredRow(null)}
                   >
-                    <td style={{ color: '#64748B', fontFamily: 'JetBrains Mono, monospace', fontSize: 12 }}>{p.id}</td>
+                    <td style={{ color: '#64748B', fontFamily: 'JetBrains Mono, monospace', fontSize: 12 }}>{(page - 1) * PER_PAGE + i + 1}</td>
                     <td>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                         <span style={{ fontWeight: 500 }}>{p.title}</span>

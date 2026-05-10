@@ -70,7 +70,7 @@ export default function Leaderboard() {
                     <td>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#10B981' }}>
                         <TrendingUp size={14} />
-                        {user.trustScore.toFixed(1)}
+                        {user.trustScore.toFixed(2)}
                       </div>
                     </td>
                   </tr>

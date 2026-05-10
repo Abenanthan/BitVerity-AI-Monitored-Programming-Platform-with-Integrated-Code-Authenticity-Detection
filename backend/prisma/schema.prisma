@@ -84,6 +84,8 @@ model Problem {
   memoryLimit    Int        // megabytes
   totalAttempts  Int        @default(0)
   totalAccepted  Int        @default(0)
+  starterCode    Json?      // { python: "...", javascript: "...", ... }
+  codeRunner     Json?      // { python: "harness appended to user code", ... }
   createdAt      DateTime   @default(now())
 
   // Relations

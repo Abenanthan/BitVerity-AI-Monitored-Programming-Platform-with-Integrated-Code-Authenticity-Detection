@@ -55,7 +55,7 @@ export default function Profile() {
               <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <span style={{ color: '#64748B' }}>Trust Score</span>
-                  <span style={{ color: '#10B981', fontWeight: 700, fontSize: 18 }}>{user.trustScore.toFixed(1)}</span>
+                  <span style={{ color: '#10B981', fontWeight: 700, fontSize: 18 }}>{user.trustScore.toFixed(2)}</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <span style={{ color: '#64748B' }}>Problems Solved</span>

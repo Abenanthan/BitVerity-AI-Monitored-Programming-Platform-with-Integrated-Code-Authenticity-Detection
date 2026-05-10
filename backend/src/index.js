@@ -90,6 +90,13 @@ async function bootstrap() {
 
     getRedisClient(); // initialise + log connection
 
+    server.on("error", (e) => {
+      if (e.code === "EADDRINUSE") {
+        logger.error(`❌  Port ${PORT} is already in use. Please close the other window running the API.`);
+        process.exit(1);
+      }
+    });
+
     server.listen(PORT, () => {
       logger.info(`🚀  CodeVerify API running on http://localhost:${PORT}`);
       logger.info(`🔌  Socket.io ready`);

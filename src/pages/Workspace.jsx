@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { api } from '../utils/api';
 import { useBehaviorTracker } from '../hooks/useBehaviorTracker';
+import { useSocket } from '../hooks/useSocket';
 
 const MonacoEditor = lazy(() => import('@monaco-editor/react'));
 
@@ -89,6 +90,29 @@ export default function Workspace() {
     setIsRunning(false);
   }
 
+  useSocket((event) => {
+    if (event.type === 'submission_verdict' && isSubmitting) {
+      const { submissionId, verdict: v, testCaseResults } = event.data;
+      const verdictMap = {
+        'ACCEPTED': 'accepted', 'WRONG_ANSWER': 'wrong',
+        'TIME_LIMIT_EXCEEDED': 'tle', 'COMPILE_ERROR': 'ce',
+        'RUNTIME_ERROR': 'wrong', 'MEMORY_LIMIT_EXCEEDED': 'mle',
+      };
+      const finalVerdict = verdictMap[v] || 'wrong';
+      setTestResults(testCaseResults || []);
+      setVerdict(finalVerdict);
+      setIsSubmitting(false);
+
+      if (finalVerdict === 'accepted') {
+        setOutputLines([{ kind: 'ok', text: `✓ All ${(testCaseResults || []).length} test cases passed!` }]);
+        setTimeout(() => navigate(`/results/${submissionId}`), 3000);
+      } else {
+        const f = (testCaseResults || []).filter(t => !t.passed).length;
+        setOutputLines([{ kind: 'err', text: `✗ ${f} of ${(testCaseResults || []).length} test cases failed.` }]);
+      }
+    }
+  });
+
   // ── SUBMIT ───────────────────────────────────────────────────────
   async function handleSubmit() {
     if (isRunning || isSubmitting || !problem) return;
@@ -100,21 +124,12 @@ export default function Workspace() {
 
     const logs = getLog();
     try {
-      const result = await api.submitCode(null, problemId, code, langKey, logs);
-      setTestResults(result.testCases);
-      setVerdict(result.verdict);
-
-      if (result.verdict === 'accepted') {
-        setOutputLines([{ kind: 'ok', text: `✓ All ${result.testCases.length} test cases passed!` }]);
-        setTimeout(() => navigate(`/results/${result.id}`), 3000);
-      } else {
-        const f = result.testCases.filter(t => !t.passed).length;
-        setOutputLines([{ kind: 'err', text: `✗ ${f} of ${result.testCases.length} test cases failed.` }]);
-      }
+      // Backend will return { id, verdict: 'PENDING' }
+      // We rely on useSocket (above) to update the UI when evaluation completes.
+      await api.submitCode(null, problemId, code, langKey, logs);
       clearLog();
     } catch (err) {
       setOutputLines([{ kind: 'err', text: `Error: ${err.message}` }]);
-    } finally {
       setIsSubmitting(false);
     }
   }
@@ -213,7 +228,7 @@ export default function Workspace() {
               <>
                 <div style={{ fontWeight: 600, color: '#E2E8F0', marginBottom: 8, fontSize: 12.5 }}>Constraints:</div>
                 <ul style={{ paddingLeft: 18, margin: 0, display: 'flex', flexDirection: 'column', gap: 5 }}>
-                  {problem.constraints.map((c, i) => (
+                  {(Array.isArray(problem.constraints) ? problem.constraints : problem.constraints.split('\n').filter(Boolean)).map((c, i) => (
                     <li key={i} style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 11.5, color: '#94A3B8' }}>{c}</li>
                   ))}
                 </ul>

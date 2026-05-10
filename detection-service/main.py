@@ -42,12 +42,20 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"CodeBERT warm-up skipped: {e}")
 
-    # Warm up UniXcoder
-    try:
-        from services.fingerprint import _load_unixcoder
-        _load_unixcoder()
-    except Exception as e:
-        logger.warning(f"UniXcoder warm-up skipped: {e}")
+    # Warm up UniXcoder in a background thread (model is ~500MB, don't block startup)
+    import threading
+    def _warmup_unixcoder():
+        try:
+            from services.fingerprint import _load_unixcoder
+            t, m = _load_unixcoder()
+            if t and m:
+                logger.info("UniXcoder loaded ✅")
+            else:
+                logger.warning("UniXcoder failed to load — cosine fingerprint disabled")
+        except Exception as e:
+            logger.warning(f"UniXcoder warm-up skipped: {e}")
+    threading.Thread(target=_warmup_unixcoder, daemon=True).start()
+    logger.info("UniXcoder loading in background...")
 
     # Warm up Isolation Forest
     try:

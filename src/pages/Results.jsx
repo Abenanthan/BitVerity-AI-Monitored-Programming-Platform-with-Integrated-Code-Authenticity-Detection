@@ -425,7 +425,7 @@ export default function Results() {
                     <TrustScoreRing score={result.user?.trustScore || 80} size={44} strokeWidth={4} />
                     <div>
                       <div style={{ fontSize: 11, color: '#64748B' }}>Trust Score Impact</div>
-                      <div style={{ fontSize: 11, color: '#94A3B8', marginTop: 1 }}>Your new score: {Math.round(result.user?.trustScore) || 80}</div>
+                      <div style={{ fontSize: 11, color: '#94A3B8', marginTop: 1 }}>Your new score: {Number(result.user?.trustScore || 80).toFixed(2)}</div>
                     </div>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
@@ -438,7 +438,7 @@ export default function Results() {
                       fontSize: 20, fontWeight: 800,
                       color: (ai.trustScoreDelta || 0) >= 0 ? '#10B981' : '#EF4444',
                     }}>
-                      {(ai.trustScoreDelta || 0) > 0 ? '+' : ''}{(ai.trustScoreDelta || 0).toFixed(1)}
+                      {(ai.trustScoreDelta || 0) > 0 ? '+' : ''}{(ai.trustScoreDelta || 0).toFixed(2)}
                     </span>
                   </div>
                 </div>

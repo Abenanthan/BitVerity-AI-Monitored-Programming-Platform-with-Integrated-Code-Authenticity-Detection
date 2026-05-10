@@ -26,8 +26,14 @@ const LANGUAGE_IDS = {
 // ─────────────────────────────────────────────────────────────────────────────
 async function createSubmission(req, res, next) {
   try {
-    const { problemId, contestId, code, language, behaviorLog, isRun, customInput } = req.body;
+    let { problemId, contestId, code, language, behaviorLog, isRun, customInput } = req.body;
     const userId = req.user.id;
+
+    // Validate contestId as UUID to prevent Prisma crash
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (contestId && !uuidRegex.test(contestId)) {
+      contestId = null;
+    }
 
     const langId = LANGUAGE_IDS[language?.toLowerCase()];
     if (!langId)
@@ -41,21 +47,50 @@ async function createSubmission(req, res, next) {
 
     // ── Handle "Run Code" (Synchronous, no DB save) ──────────────────────────
     if (isRun) {
-      let testCaseToRun;
+      // Use custom input if provided, else run all visible (non-hidden) test cases
       if (customInput) {
-        testCaseToRun = { input: customInput, output: "N/A" };
-      } else {
-        testCaseToRun = problem.testCases.find(tc => tc.isHidden === false) || problem.testCases[0];
+        const runResult = executeLocally(code, langId, customInput, 'N/A', problem.timeLimit, problem.codeRunner);
+        return res.status(200).json({
+          status: 'success',
+          data: {
+            isRun: true,
+            verdict: runResult.status,
+            runtime: runResult.runtime,
+            output: runResult.stdout,
+            testResults: [],
+          }
+        });
       }
 
-      const runResult = executeLocally(code, langId, testCaseToRun.input, testCaseToRun.output, problem.timeLimit);
+      // Run against all visible sample test cases
+      const visibleCases = problem.testCases.filter(tc => !tc.isHidden).slice(0, 3);
+      if (visibleCases.length === 0) {
+        const fallback = problem.testCases[0];
+        visibleCases.push(fallback);
+      }
+
+      const testResults = visibleCases.map(tc => {
+        const r = executeLocally(code, langId, tc.input, tc.output, problem.timeLimit, problem.codeRunner);
+        return {
+          passed: r.status === 'ACCEPTED',
+          output: r.stdout || r.stderr || '',
+          expected: tc.output,
+          input: tc.input,
+        };
+      });
+
+      const allPassed = testResults.every(r => r.passed);
+      const maxRuntime = Math.max(...testResults.map(() => 0)); // local execution doesn't report ms reliably
+      const firstResult = testResults[0];
+
       return res.status(200).json({
-        status: "success",
+        status: 'success',
         data: {
           isRun: true,
-          verdict: runResult.status,
-          runtime: runResult.runtime,
-          output: runResult.stdout // I need to return actual stdout from executeLocally
+          verdict: allPassed ? 'ACCEPTED' : 'WRONG_ANSWER',
+          runtime: firstResult ? 1 : 0,
+          output: firstResult?.output || '',
+          testResults,
         }
       });
     }
@@ -106,25 +141,31 @@ async function createSubmission(req, res, next) {
 // ─────────────────────────────────────────────────────────────────────────────
 // Internal: Local execution fallback (for when Judge0 API fails)
 // ─────────────────────────────────────────────────────────────────────────────
-function executeLocally(code, langId, input, expectedOutput, timeLimit) {
+function executeLocally(code, langId, input, expectedOutput, timeLimit, codeRunner) {
   const tempDir = path.join(process.cwd(), "temp_execution");
   if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir, { recursive: true });
   
   const fileId = uuidv4();
   let filepath, command, args;
+
+  // Detect language and determine if user code already reads stdin
+  const hasStdinReading = /sys\.stdin|input\s*\(|__name__|readFileSync|fs\.read/.test(code);
   
   if (langId === 71) { // python
+    // Append runner harness if user hasn't added stdin reading
+    const runnerHarness = (!hasStdinReading && codeRunner?.python) ? codeRunner.python : '';
     filepath = path.join(tempDir, `${fileId}.py`);
-    fs.writeFileSync(filepath, code);
+    fs.writeFileSync(filepath, code + '\n' + runnerHarness);
     command = "python";
     args = [filepath];
   } else if (langId === 63) { // javascript
+    const runnerHarness = (!hasStdinReading && codeRunner?.javascript) ? codeRunner.javascript : '';
     filepath = path.join(tempDir, `${fileId}.js`);
-    fs.writeFileSync(filepath, code);
+    fs.writeFileSync(filepath, code + '\n' + runnerHarness);
     command = "node";
     args = [filepath];
   } else {
-    return { status: "COMPILE_ERROR", runtime: 0, memory: 0 }; // Local unsupported for cpp/java without compile steps
+    return { status: "COMPILE_ERROR", runtime: 0, memory: 0, stdout: '', stderr: 'Language not supported for local execution' };
   }
 
   const start = Date.now();
@@ -170,11 +211,17 @@ async function judgeSubmission(submission, problem, code, langId, sessionId, con
 
   const testCaseResults = [];
   try {
+    // Detect if user code already reads stdin
+    const hasStdinReading = /sys\.stdin|input\s*\(|__name__|readFileSync|fs\.read/.test(code);
+    const runnerHarness = (!hasStdinReading && problem.codeRunner && problem.codeRunner[submission.language?.toLowerCase()]) 
+      ? `\n${problem.codeRunner[submission.language?.toLowerCase()]}` 
+      : '';
+
     for (const tc of problem.testCases) {
       const response = await axios.post(
         `${JUDGE0_URL}/submissions?base64_encoded=false&wait=true`,
         {
-          source_code:     code,
+          source_code:     code + runnerHarness,
           language_id:     langId,
           stdin:           tc.input,
           expected_output: tc.output,
@@ -198,10 +245,11 @@ async function judgeSubmission(submission, problem, code, langId, sessionId, con
       const passed = r.status?.id === 3;
       testCaseResults.push({
         passed,
-        input: tc.isHidden ? null : tc.input,
-        output: tc.isHidden ? null : r.stdout,
-        expected: tc.isHidden ? null : tc.output,
-        status: r.status?.description
+        input: tc.input, // Send full info; UI can mask if needed, but here it's the user's own room
+        output: r.stdout || r.stderr || r.compile_output || "(no output)",
+        expected: tc.output,
+        status: r.status?.description,
+        isHidden: tc.isHidden
       });
 
       if (!passed) {
@@ -228,7 +276,7 @@ async function judgeSubmission(submission, problem, code, langId, sessionId, con
     testCaseResults.length = 0; // Clear partial Judge0 results
 
     for (const tc of problem.testCases) {
-      const localResult = executeLocally(code, langId, tc.input, tc.output, problem.timeLimit);
+      const localResult = executeLocally(code, langId, tc.input, tc.output, problem.timeLimit, problem.codeRunner);
       
       totalRuntime += localResult.runtime;
       totalMemory += localResult.memory;
@@ -236,10 +284,11 @@ async function judgeSubmission(submission, problem, code, langId, sessionId, con
       const passed = localResult.status === "ACCEPTED";
       testCaseResults.push({
         passed,
-        input: tc.isHidden ? null : tc.input,
-        output: tc.isHidden ? null : localResult.stdout,
-        expected: tc.isHidden ? null : tc.output,
-        status: localResult.status
+        input: tc.input,
+        output: localResult.stdout || localResult.stderr || "(no output)",
+        expected: tc.output,
+        status: localResult.status,
+        isHidden: tc.isHidden
       });
 
       if (!passed) {
@@ -333,6 +382,7 @@ async function judgeSubmission(submission, problem, code, langId, sessionId, con
   }
 
   // ── Emit real-time update via Redis pub/sub ────────────────────────────────
+  logger.info(`📡 Publishing submission:verdict to room user:${submission.userId} (verdict=${finalVerdict})`);
   await redis.publish(
     "realtime:events",
     JSON.stringify({
@@ -342,7 +392,8 @@ async function judgeSubmission(submission, problem, code, langId, sessionId, con
         submissionId: submission.id,
         verdict: finalVerdict,
         runtime: avgRuntime,
-        memory: avgMemory
+        memory: avgMemory,
+        testCaseResults: testCaseResults
       }
     })
   );

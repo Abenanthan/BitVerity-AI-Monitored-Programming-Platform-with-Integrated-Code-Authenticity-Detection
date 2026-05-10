@@ -1,14 +1,15 @@
 import { useState, useEffect, useRef, Suspense, lazy } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
-  ChevronDown, ChevronUp, RotateCcw, Copy, Maximize2, Minus, Plus,
-  Play, Send, AlertTriangle, Check, Terminal
+  ChevronDown, ChevronUp, RotateCcw, Copy, Maximize2, Minimize2, Minus, Plus,
+  Play, Send, AlertTriangle, Check
 } from 'lucide-react';
 import DifficultyBadge from '../components/DifficultyBadge';
 import ContestTimer from '../components/ContestTimer';
 import LanguageSelector from '../components/LanguageSelector';
 import VerdictBanner from '../components/VerdictBanner';
 import ExplainabilityTest from '../components/ExplainabilityTest';
+import TestCasePanel from '../components/TestCasePanel';
 import { STARTER_CODE, ACTIVE_CONTESTS } from '../utils/constants';
 import { api } from '../utils/api';
 import { useSocket } from '../hooks/useSocket';
@@ -53,21 +54,20 @@ export default function Contest() {
   const [problemData, setProblemData] = useState(null);
 
   // Editor state
-  const [lang, setLang]         = useState('python');
-  const [code, setCode]         = useState(STARTER_CODE.python);
+  const [lang, setLang] = useState('python');
+  const [code, setCode] = useState(STARTER_CODE.python);
   const [fontSize, setFontSize] = useState(14);
-  const [customInput, setCustomInput] = useState('2 7 11 15\n9');
-  const [output, setOutput]     = useState('');
-  const [verdict, setVerdict]   = useState(null);
-  const [running, setRunning]   = useState(false);
+  const [verdict, setVerdict] = useState(null);
+  const [running, setRunning] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [leftOpen, setLeftOpen]     = useState(true);
+  const [leftOpen, setLeftOpen] = useState(true);
   const [isExpanded, setIsExpanded] = useState(false);
   const [activeTab, setActiveTab] = useState(0);
   const [openExamples, setOpenExamples] = useState([0]);
 
   const [showExplainTest, setShowExplainTest] = useState(false);
   const [activeSubmissionId, setActiveSubmissionId] = useState(null);
+  const [runResult, setRunResult] = useState(null);
 
   // Behavior tracking — replaces old useBehaviorMonitor
   const { getLog, clearLog, getAnalysis, onKey } = useBehaviorTracker();
@@ -90,6 +90,14 @@ export default function Contest() {
           examples: data.testCases ? data.testCases.filter(t => !t.isHidden).map(t => ({ input: t.input, output: t.output })) : [],
           constraints: data.constraints ? data.constraints.split('\n') : [],
         });
+
+        // Use problem-specific starter code if available, otherwise fallback to generic
+        const specificCode = data.starterCode && data.starterCode[lang];
+        if (specificCode) {
+          setCode(specificCode);
+        } else {
+          setCode(STARTER_CODE[lang] || '');
+        }
       } catch (err) {
         console.error("Failed to load problem", err);
       }
@@ -99,7 +107,7 @@ export default function Contest() {
 
   useSocket((event) => {
     if (event.type === 'submission_verdict') {
-      const { submissionId, verdict: v, runtime, memory } = event.data;
+      const { submissionId, verdict: v, runtime, memory, testCaseResults } = event.data;
       const verdictMap = {
         'ACCEPTED': 'accepted',
         'WRONG_ANSWER': 'wrong',
@@ -112,27 +120,31 @@ export default function Contest() {
       setSubmitting(false);
       setRunning(false);
       setVerdict(finalVerdict);
-      setOutput(prev => prev + `\n\n━━━ Judge0 Result ━━━\nVerdict: ${v}\nRuntime: ${runtime}ms | Memory: ${(memory / 1024).toFixed(1)}KB`);
-      
+      // Update the test case panel with submission results
+      setRunResult({
+        verdict: v,
+        runtime,
+        memory,
+        testResults: testCaseResults || [],
+      });
+
       if (finalVerdict === 'accepted') {
         setActiveSubmissionId(submissionId);
         setShowExplainTest(true);
       }
-      // Do not navigate automatically if the user fails. Let them stay and try again.
     } else if (event.type === 'detection_update') {
-      const { aiScore, aiVerdict, flags } = event.data;
-      const formattedFlags = flags && flags.length > 0 ? flags.map(f => f.detail || f.type).join(', ') : 'None';
-      setOutput(prev => prev + `\n\n━━━ AI Detection ━━━\nAI Probability: ${Math.round((aiScore || 0) * 100)}%\nVerdict: ${aiVerdict}\nFlags: ${formattedFlags}`);
+      // silent — results are shown on the Results page
     }
   });
 
   function handleLangChange(newLang) {
     setLang(newLang);
-    const newCode = STARTER_CODE[newLang] || '';
+    const specificCode = problemData?.starterCode && problemData.starterCode[newLang];
+    const newCode = specificCode || STARTER_CODE[newLang] || '';
     setCode(newCode);
     if (editorRef.current) editorRef.current.setValue(newCode);
     setVerdict(null);
-    setOutput('');
+    setRunResult(null);
   }
 
   function handleReset() {
@@ -140,35 +152,29 @@ export default function Contest() {
     setCode(newCode);
     if (editorRef.current) editorRef.current.setValue(newCode);
     setVerdict(null);
-    setOutput('');
+    setRunResult(null);
   }
 
   async function handleRun() {
     if (!problemData) return;
     setRunning(true);
     setVerdict(null);
-    setOutput('⏳ Running your code...');
+    setRunResult(null);
     try {
       const currentCode = editorRef.current ? editorRef.current.getValue() : code;
-      const customInputVal = document.getElementById('custom-input')?.value || null;
-      const result = await api.submitCode(null, problemData.id, currentCode, lang, getLog(), true, customInputVal);
-      
-      const { verdict: v, runtime, output: out } = result;
+      const result = await api.submitCode(null, problemData.id, currentCode, lang, getLog(), true, null);
+      const { verdict: v, runtime, testResults } = result;
       const verdictMap = {
-        'ACCEPTED': 'accepted',
-        'WRONG_ANSWER': 'wrong',
-        'TIME_LIMIT_EXCEEDED': 'tle',
-        'COMPILE_ERROR': 'ce',
-        'RUNTIME_ERROR': 'wrong',
-        'MEMORY_LIMIT_EXCEEDED': 'mle',
+        'ACCEPTED': 'accepted', 'WRONG_ANSWER': 'wrong',
+        'TIME_LIMIT_EXCEEDED': 'tle', 'COMPILE_ERROR': 'ce',
+        'RUNTIME_ERROR': 'wrong', 'MEMORY_LIMIT_EXCEEDED': 'mle',
       };
-      
       setVerdict(verdictMap[v] || 'wrong');
-      setOutput(`━━━ Run Result ━━━\nVerdict: ${v}\nRuntime: ${runtime}ms\n\nOutput:\n${out || "No output"}`);
+      setRunResult({ verdict: v, runtime, testResults: testResults || [] });
       setRunning(false);
     } catch (err) {
       const msg = err.response?.data?.message || err.message;
-      setOutput(`❌ Error: ${msg}`);
+      setRunResult({ verdict: 'ERROR', runtime: 0, testResults: [], error: msg });
       setRunning(false);
     }
   }
@@ -177,14 +183,14 @@ export default function Contest() {
     if (!problemData) return;
     setSubmitting(true);
     setVerdict(null);
-    setOutput('⏳ Submitting code for final evaluation...');
+    setRunResult(null);
     try {
       const currentCode = editorRef.current ? editorRef.current.getValue() : code;
       const result = await api.submitCode(id || null, problemData.id, currentCode, lang, getLog());
-      setOutput(prev => prev + `\nSubmission ID: ${result.id}\nCode + behavior trace sent.\nWaiting for Judge0 + AI Detection...`);
+      // Verdict arrives via WebSocket (submission_verdict event)
     } catch (err) {
       const msg = err.response?.data?.message || err.message;
-      setOutput(`❌ Submission Error: ${msg}`);
+      setRunResult({ verdict: 'ERROR', runtime: 0, testResults: [], error: `Submission Error: ${msg}` });
     } finally {
       setSubmitting(false);
     }
@@ -447,8 +453,8 @@ export default function Contest() {
               <Copy size={13} /> Copy
             </button>
 
-            <button 
-              aria-label={isExpanded ? "Collapse" : "Fullscreen"} 
+            <button
+              aria-label={isExpanded ? "Collapse" : "Fullscreen"}
               onClick={() => setIsExpanded(!isExpanded)}
               style={{
                 background: 'none', border: 'none', cursor: 'pointer',
@@ -511,8 +517,18 @@ export default function Contest() {
             </Suspense>
           </div>
 
+          {/* LeetCode-style test case panel */}
+          {!showExplainTest && (
+            <TestCasePanel
+              examples={problemData.examples || []}
+              sampleInput={problemData.sampleInput || ''}
+              runResult={runResult}
+              isRunning={running}
+            />
+          )}
+
           {showExplainTest && (
-            <ExplainabilityTest 
+            <ExplainabilityTest
               submissionId={activeSubmissionId}
               code={editorRef.current ? editorRef.current.getValue() : code}
               language={lang}
@@ -580,8 +596,8 @@ export default function Contest() {
               {submitting
                 ? <><Spinner dark /> Judging...</>
                 : verdict === 'accepted'
-                ? <><Check size={14} /> Accepted!</>
-                : <><Send size={14} /> Submit</>
+                  ? <><Check size={14} /> Accepted!</>
+                  : <><Send size={14} /> Submit</>
               }
             </button>
 
@@ -593,60 +609,25 @@ export default function Contest() {
             )}
           </div>
 
-          {/* Custom stdin input */}
-          <div style={{ padding: '14px', borderBottom: '1px solid var(--border)' }}>
-            <label htmlFor="custom-input" style={{ fontSize: 11, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.08em', display: 'block', marginBottom: 6 }}>
-              Custom Input (stdin for Run)
-            </label>
-            <textarea
-              id="custom-input"
-              value={customInput}
-              onChange={e => setCustomInput(e.target.value)}
-              rows={3}
-              style={{
-                width: '100%', boxSizing: 'border-box',
-                fontFamily: 'JetBrains Mono, monospace',
-                fontSize: 11.5, resize: 'vertical',
-                background: 'var(--bg-base)',
-                border: '1px solid var(--border)',
-                borderRadius: 6, padding: '8px 10px',
-                color: '#94A3B8', outline: 'none',
-                lineHeight: 1.6,
-              }}
-              placeholder={'2 7 11 15\n9'}
-              aria-label="Custom stdin input"
-            />
-            <div style={{ fontSize: 10.5, color: '#374151', marginTop: 5, lineHeight: 1.5 }}>
-              Stdin-based: edit above → Run<br/>
-              Class-based: add test calls in editor → Run
-            </div>
-          </div>
-
-          {/* Output console */}
-          <div style={{ flex: 1, padding: '14px', display: 'flex', flexDirection: 'column', gap: 8, overflow: 'hidden' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <Terminal size={12} color="#64748B" />
-              <span style={{ fontSize: 11, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Output</span>
-              {verdict && (
-                <span style={{ marginLeft: 'auto', width: 8, height: 8, borderRadius: '50%', background: verdictColor, boxShadow: `0 0 6px ${verdictColor}` }} />
-              )}
-            </div>
-            <pre style={{
-              flex: 1,
-              fontFamily: 'JetBrains Mono, monospace',
-              fontSize: 11,
-              lineHeight: 1.7,
-              color: verdict === 'accepted' ? '#10B981' : verdict ? '#EF4444' : '#94A3B8',
-              background: 'var(--bg-base)',
-              border: '1px solid var(--border)',
-              borderRadius: 6,
-              padding: '10px 12px',
-              overflow: 'auto',
-              whiteSpace: 'pre-wrap',
-              wordBreak: 'break-word',
-            }}>
-              {output || <span style={{ color: '#2D3748' }}>// Run or submit to see output</span>}
-            </pre>
+          {/* Verdict result info */}
+          <div style={{ flex: 1, padding: '14px', display: 'flex', flexDirection: 'column', gap: 8, overflow: 'auto' }}>
+            {!runResult && !running && (
+              <div style={{ color: '#374151', fontFamily: 'JetBrains Mono, monospace', fontSize: 11.5, lineHeight: 1.7 }}>
+                // Run Code to test against sample cases,<br />
+                // or Submit to evaluate all test cases.
+              </div>
+            )}
+            {running && (
+              <div style={{ color: '#64748B', fontFamily: 'Inter, sans-serif', fontSize: 13 }}>⏳ Running...</div>
+            )}
+            {submitting && (
+              <div style={{ color: '#64748B', fontFamily: 'Inter, sans-serif', fontSize: 13 }}>⏳ Submitting and evaluating all test cases...</div>
+            )}
+            {runResult?.error && (
+              <pre style={{ color: '#EF4444', fontFamily: 'JetBrains Mono, monospace', fontSize: 11, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                ❌ {runResult.error}
+              </pre>
+            )}
           </div>
         </div>
       </div>

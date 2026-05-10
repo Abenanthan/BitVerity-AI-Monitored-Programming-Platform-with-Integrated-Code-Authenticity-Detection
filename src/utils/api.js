@@ -34,6 +34,11 @@ export const api = {
     return response.data.data; // { token, user }
   },
 
+  async register(username, email, password) {
+    const response = await apiClient.post('/auth/register', { username, email, password });
+    return response.data.data;
+  },
+
   async getMe() {
     const response = await apiClient.get('/users/me');
     return response.data.data;
@@ -63,7 +68,11 @@ export const api = {
       isRun,
       customInput
     };
-    if (contestId && contestId !== 'undefined' && contestId !== 'null') payload.contestId = contestId;
+    // Only include contestId if it is a valid UUID — strip slugs like "weekly-42"
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (contestId && uuidRegex.test(contestId)) {
+      payload.contestId = contestId;
+    }
 
     const response = await apiClient.post('/submissions', payload);
     return response.data.data;

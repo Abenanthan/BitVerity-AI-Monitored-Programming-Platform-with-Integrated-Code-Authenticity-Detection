@@ -5,7 +5,8 @@ export function useContestTimer(endsAt) {
 
   useEffect(() => {
     const update = () => {
-      const remaining = Math.max(0, Math.floor((endsAt - Date.now()) / 1000));
+      const endMs = new Date(endsAt).getTime();
+      const remaining = Number.isNaN(endMs) ? 0 : Math.max(0, Math.floor((endMs - Date.now()) / 1000));
       setTimeLeft(remaining);
     };
     update();

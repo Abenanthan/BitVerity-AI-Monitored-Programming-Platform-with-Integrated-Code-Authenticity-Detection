@@ -25,7 +25,7 @@ async function listProblems(req, res, next) {
       }),
     };
 
-    const [problems, total] = await Promise.all([
+    const [problemsRaw, total] = await Promise.all([
       prisma.problem.findMany({
         where,
         orderBy: { createdAt: "desc" },
@@ -34,10 +34,29 @@ async function listProblems(req, res, next) {
         select: {
           id: true, title: true, slug: true, difficulty: true, topics: true,
           totalAttempts: true, totalAccepted: true, timeLimit: true, memoryLimit: true,
+          ...(req.user && {
+            submissions: {
+              where: { userId: req.user.id },
+              select: { verdict: true }
+            }
+          })
         },
       }),
       prisma.problem.count({ where }),
     ]);
+
+    const problems = problemsRaw.map(p => {
+      let status = null;
+      if (p.submissions && p.submissions.length > 0) {
+        if (p.submissions.some(s => s.verdict === "ACCEPTED")) {
+          status = "solved";
+        } else {
+          status = "attempted";
+        }
+      }
+      const { submissions, ...rest } = p;
+      return { ...rest, status, acceptance: p.totalAttempts ? Math.round((p.totalAccepted / p.totalAttempts) * 100) : 0 };
+    });
 
     res.json({
       success: true,

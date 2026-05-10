@@ -3,7 +3,6 @@ import { useNavigate, Link } from 'react-router-dom';
 import { Zap, Eye, EyeOff, ArrowRight } from 'lucide-react';
 import { api } from '../utils/api';
 
-// lucide-react doesn't ship brand logos — inline SVG instead
 function GithubIcon({ size = 18 }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
@@ -12,7 +11,8 @@ function GithubIcon({ size = 18 }) {
   );
 }
 
-export default function Login() {
+export default function Register() {
+  const [username, setUsername] = useState('');
   const [email, setEmail]       = useState('');
   const [password, setPassword] = useState('');
   const [showPw, setShowPw]     = useState(false);
@@ -25,12 +25,15 @@ export default function Login() {
     setError('');
     setLoading(true);
     try {
+      // Register the user
+      await api.register(username, email, password);
+      // Automatically login after register
       const { accessToken } = await api.login(email, password);
       localStorage.setItem('codeverify_token', accessToken);
       navigate('/dashboard');
     } catch (err) {
       console.error(err);
-      setError('Invalid credentials. Please try again.');
+      setError(err.response?.data?.message || 'Registration failed. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -60,7 +63,7 @@ export default function Login() {
       {/* Animated grid */}
       <div className="grid-bg" style={{ opacity: 0.5 }} />
 
-      {/* Login card */}
+      {/* Register card */}
       <div className="page-enter" style={{
         background: 'var(--bg-surface)',
         border: '1px solid rgba(255,255,255,0.08)',
@@ -85,10 +88,10 @@ export default function Login() {
             <Zap size={26} color="#fff" />
           </div>
           <h1 style={{ fontSize: 22, fontWeight: 700, letterSpacing: '-0.5px', marginBottom: 6 }}>
-            Sign in to BitVerity 
+            Create your account
           </h1>
           <p style={{ color: '#64748B', fontSize: 13 }}>
-            Welcome back. Let's verify your code.
+            Join BitVerity to verify your coding skills.
           </p>
         </div>
 
@@ -134,6 +137,28 @@ export default function Login() {
         {/* Form */}
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
 
+          {/* Username */}
+          <div>
+            <label
+              htmlFor="username"
+              style={{
+                display: 'block', fontSize: 12, fontWeight: 500,
+                color: '#94A3B8', marginBottom: 6, letterSpacing: '0.03em',
+              }}
+            >
+              USERNAME
+            </label>
+            <input
+              id="username"
+              type="text"
+              className="input-field"
+              placeholder="coding_ninja"
+              value={username}
+              onChange={e => setUsername(e.target.value)}
+              required
+            />
+          </div>
+
           {/* Email */}
           <div>
             <label
@@ -159,27 +184,25 @@ export default function Login() {
 
           {/* Password */}
           <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-              <label
-                htmlFor="password"
-                style={{ fontSize: 12, fontWeight: 500, color: '#94A3B8', letterSpacing: '0.03em' }}
-              >
-                PASSWORD
-              </label>
-              <a href="#" style={{ fontSize: 12, color: '#00D4FF', textDecoration: 'none' }}>
-                Forgot password?
-              </a>
-            </div>
+            <label
+              htmlFor="password"
+              style={{
+                display: 'block', fontSize: 12, fontWeight: 500,
+                color: '#94A3B8', marginBottom: 6, letterSpacing: '0.03em',
+              }}
+            >
+              PASSWORD
+            </label>
             <div style={{ position: 'relative' }}>
               <input
                 id="password"
                 type={showPw ? 'text' : 'password'}
                 className="input-field"
-                placeholder="Enter your password"
+                placeholder="Create a password"
                 value={password}
                 onChange={e => setPassword(e.target.value)}
                 required
-                autoComplete="current-password"
+                autoComplete="new-password"
                 style={{ paddingRight: 44 }}
               />
               <button
@@ -217,9 +240,9 @@ export default function Login() {
           {/* Submit */}
           <button
             type="submit"
-            id="login-submit"
+            id="register-submit"
             disabled={loading}
-            aria-label="Sign in"
+            aria-label="Sign up"
             style={{
               width: '100%',
               padding: '12px',
@@ -253,19 +276,19 @@ export default function Login() {
                   animation: 'loginSpin 0.8s linear infinite',
                   display: 'inline-block',
                 }} />
-                Signing in...
+                Signing up...
               </>
             ) : (
-              <>Sign in <ArrowRight size={16} /></>
+              <>Sign up <ArrowRight size={16} /></>
             )}
           </button>
         </form>
 
-        {/* Register link */}
+        {/* Login link */}
         <p style={{ textAlign: 'center', fontSize: 13, color: '#64748B', marginTop: 24 }}>
-          Don't have an account?{' '}
-          <Link to="/register" style={{ color: '#00D4FF', textDecoration: 'none', fontWeight: 500 }}>
-            Create one free
+          Already have an account?{' '}
+          <Link to="/login" style={{ color: '#00D4FF', textDecoration: 'none', fontWeight: 500 }}>
+            Sign in
           </Link>
         </p>
       </div>

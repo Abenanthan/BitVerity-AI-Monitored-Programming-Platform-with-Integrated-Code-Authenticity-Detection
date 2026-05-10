@@ -33,9 +33,53 @@ async function main() {
   });
 
   // ── 2. Sample Problem — Two Sum ────────────────────────────────
+  const TWO_SUM_STARTER = {
+    python: `def twoSum(nums, target):
+    # Write your solution here
+    pass`,
+    javascript: `/**
+ * @param {number[]} nums
+ * @param {number} target
+ * @return {number[]}
+ */
+function twoSum(nums, target) {
+    // Write your solution here
+}`,
+    java: `class Solution {
+    public int[] twoSum(int[] nums, int target) {
+        // Write your solution here
+        return new int[]{};
+    }
+}`,
+    cpp: `class Solution {
+public:
+    vector<int> twoSum(vector<int>& nums, int target) {
+        // Write your solution here
+        return {};
+    }
+};`,
+  };
+
+  const TWO_SUM_RUNNER = {
+    python: `
+import sys, json
+_lines = sys.stdin.read().strip().split('\\n')
+_nums = json.loads(_lines[0])
+_target = int(_lines[1].strip())
+_result = twoSum(_nums, _target)
+print(json.dumps(_result, separators=(',', ':')))`,
+    javascript: `
+const lines = require('fs').readFileSync(0,'utf-8').trim().split('\\n');
+const nums = JSON.parse(lines[0]);
+const target = parseInt(lines[1]);
+console.log(JSON.stringify(twoSum(nums, target)));`,
+  };
+
   const twoSum = await prisma.problem.upsert({
     where: { slug: "two-sum" },
     update: {
+      starterCode: TWO_SUM_STARTER,
+      codeRunner: TWO_SUM_RUNNER,
       testCases: {
         create: [
           { input: "[2,7,11,15]\n9", output: "[0,1]", isHidden: false },
@@ -44,7 +88,7 @@ async function main() {
           { input: "[0,4,3,0]\n0",    output: "[0,3]", isHidden: true  },
           { input: "[-1,-2,-3,-4,-5]\n-8", output: "[2,4]", isHidden: true },
           { input: "[10,20,30,40,50,60,70,80,90,100]\n190", output: "[8,9]", isHidden: true },
-          { input: "[1,1,1,1,1,4,1,1,1,1]\n5", output: "[0,5]", isHidden: true },
+          { input: "[1,2,3,4,5,6,7,8,9,20]\n29", output: "[8,9]", isHidden: true },
           { input: "[1000000000, 1000000000]\n2000000000", output: "[0,1]", isHidden: true },
         ],
       },
@@ -62,6 +106,8 @@ async function main() {
       sampleOutput: "[0,1]",
       timeLimit: 1000,
       memoryLimit: 256,
+      starterCode: TWO_SUM_STARTER,
+      codeRunner: TWO_SUM_RUNNER,
       testCases: {
         create: [
           { input: "[2,7,11,15]\n9", output: "[0,1]", isHidden: false },
@@ -70,7 +116,7 @@ async function main() {
           { input: "[0,4,3,0]\n0",    output: "[0,3]", isHidden: true  },
           { input: "[-1,-2,-3,-4,-5]\n-8", output: "[2,4]", isHidden: true },
           { input: "[10,20,30,40,50,60,70,80,90,100]\n190", output: "[8,9]", isHidden: true },
-          { input: "[1,1,1,1,1,4,1,1,1,1]\n5", output: "[0,5]", isHidden: true },
+          { input: "[1,2,3,4,5,6,7,8,9,20]\n29", output: "[8,9]", isHidden: true },
           { input: "[1000000000, 1000000000]\n2000000000", output: "[0,1]", isHidden: true },
         ],
       },
@@ -82,6 +128,16 @@ async function main() {
   const longestSub = await prisma.problem.upsert({
     where: { slug: "longest-substring-without-repeating-characters" },
     update: {
+      starterCode: {
+        python: `def lengthOfLongestSubstring(s):\n    # Write your solution here\n    pass`,
+        javascript: `/**\n * @param {string} s\n * @return {number}\n */\nfunction lengthOfLongestSubstring(s) {\n    // Write your solution here\n}`,
+        java: `class Solution {\n    public int lengthOfLongestSubstring(String s) {\n        // Write your solution here\n        return 0;\n    }\n}`,
+        cpp: `class Solution {\npublic:\n    int lengthOfLongestSubstring(string s) {\n        // Write your solution here\n        return 0;\n    }\n};`,
+      },
+      codeRunner: {
+        python: `\nimport sys\n_s = sys.stdin.read().rstrip('\\r\\n')\nprint(lengthOfLongestSubstring(_s))`,
+        javascript: `\nconst fs = require('fs');\nconst s = fs.readFileSync(0, 'utf-8').replace(/\\r?\\n$/, '');\nconsole.log(lengthOfLongestSubstring(s));`,
+      },
       testCases: {
         create: [
           { input: "abcabcbb", output: "3", isHidden: false },
@@ -110,6 +166,16 @@ async function main() {
       sampleOutput: "3",
       timeLimit: 1000,
       memoryLimit: 256,
+      starterCode: {
+        python: `def lengthOfLongestSubstring(s):\n    # Write your solution here\n    pass`,
+        javascript: `/**\n * @param {string} s\n * @return {number}\n */\nfunction lengthOfLongestSubstring(s) {\n    // Write your solution here\n}`,
+        java: `class Solution {\n    public int lengthOfLongestSubstring(String s) {\n        // Write your solution here\n        return 0;\n    }\n}`,
+        cpp: `class Solution {\npublic:\n    int lengthOfLongestSubstring(string s) {\n        // Write your solution here\n        return 0;\n    }\n};`,
+      },
+      codeRunner: {
+        python: `\nimport sys\n_s = sys.stdin.read().rstrip('\\r\\n')\nprint(lengthOfLongestSubstring(_s))`,
+        javascript: `\nconst fs = require('fs');\nconst s = fs.readFileSync(0, 'utf-8').replace(/\\r?\\n$/, '');\nconsole.log(lengthOfLongestSubstring(s));`,
+      },
       testCases: {
         create: [
           { input: "abcabcbb", output: "3", isHidden: false },
