@@ -1,27 +1,33 @@
 const axios = require('axios');
+const crypto = require('crypto');
 
-async function test() {
+async function runTest() {
+  // Use a user ID that has 5 samples (assuming the first one)
+  const { PrismaClient } = require("@prisma/client");
+  const prisma = new PrismaClient();
+  const profile = await prisma.styleProfile.findFirst({ where: { sampleCount: { gte: 3 } } });
+  
+  if (!profile) {
+    console.log("No profile with >= 3 samples.");
+    return;
+  }
+  
+  console.log("Testing with User ID:", profile.userId);
+  
   try {
-    const code = "import sys\ndef solve(): pass\n# Just some extra text to make it longer than 20 chars\n# A bit more to trigger the paste properly\n# And more just in case.";
     const res = await axios.post('http://localhost:8000/detect/analyze', {
-      submissionId: "f9999999-9999-4999-9999-999999999999",
-      userId: "1e6e32ed-5e39-4455-8ec5-5bdae5077462",
-      code: code,
+      submissionId: crypto.randomUUID(),
+      userId: profile.userId,
+      code: "def hello():\n    print('world')\n",
       language: "python",
-      behaviorLog: [
-        { time: 100, type: "window_focus", data: {} },
-        { time: 500, type: "paste", data: { chars: code.length, isLarge: true, pasteType: "full_code_block" } },
-        { time: 1000, type: "submit", data: {} }
-      ]
+      behaviorLog: []
     });
     console.log(JSON.stringify(res.data, null, 2));
-  } catch (err) {
-    if (err.response) {
-      console.error(err.response.status, err.response.data);
-    } else {
-      console.error(err);
-    }
+  } catch(e) {
+    console.error("Error:", e.response ? e.response.data : e.message);
+  } finally {
+    await prisma.$disconnect();
   }
 }
 
-test();
+runTest();

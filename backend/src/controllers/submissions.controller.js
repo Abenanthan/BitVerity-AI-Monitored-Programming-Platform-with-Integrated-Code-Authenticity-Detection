@@ -5,6 +5,7 @@ const path = require("path");
 const { spawnSync } = require("child_process");
 const prisma   = require("../lib/prisma");
 const { getRedisClient } = require("../lib/redis");
+const { emitToRoom } = require("../socket/socketManager");
 const AppError = require("../utils/AppError");
 const logger   = require("../utils/logger");
 
@@ -301,107 +302,120 @@ async function judgeSubmission(submission, problem, code, langId, sessionId, con
   const avgRuntime = Math.round(totalRuntime / count);
   const avgMemory  = Math.round(totalMemory  / count);
 
-  // ── Update submission with judge result ────────────────────────────────────
-  const updated = await prisma.submission.update({
-    where: { id: submission.id },
-    data:  { 
-      verdict: finalVerdict, 
-      runtime: avgRuntime, 
-      memory: avgMemory,
-      testCaseResults: testCaseResults
-    },
-  });
+  // ── 🚀 DELIVER VERDICT — direct Socket.IO emit (primary) + Redis (fallback) ──
+  const verdictPayload = {
+    submissionId:    submission.id,
+    verdict:         finalVerdict,
+    runtime:         avgRuntime,
+    memory:          avgMemory,
+    testCaseResults: testCaseResults,
+  };
 
+  // 1. Direct emit via socketManager (works even without Redis)
+  const room = `user:${submission.userId}`;
+  const emitted = emitToRoom(room, "submission:verdict", verdictPayload);
+  logger.info(`📡 Direct emit submission:verdict to room=${room} (delivered=${emitted})`);
 
-  // ── Update problem acceptance counter ──────────────────────────────────────
-  await prisma.problem.update({
-    where: { id: submission.problemId },
-    data: {
-      totalAttempts: { increment: 1 },
-      ...(finalVerdict === "ACCEPTED" && { totalAccepted: { increment: 1 } }),
-    },
-  });
+  // 2. Also publish to Redis if available (supports multi-process deployments)
+  try {
+    const redis = getRedisClient();
+    await redis.publish(
+      "realtime:events",
+      JSON.stringify({ room, event: "submission:verdict", data: verdictPayload })
+    );
+  } catch (redisErr) {
+    logger.warn(`Redis publish skipped (Redis unavailable): ${redisErr.message}`);
+  }
 
-  // ── Invalidate problem cache ───────────────────────────────────────────────
-  const problem2 = await prisma.problem.findUnique({
-    where: { id: submission.problemId }, select: { slug: true },
-  });
-  if (problem2) await redis.del(`cache:problem:${problem2.slug}`);
-
-  // ── First accepted — increment totalSolved & update contest leaderboard ────
-  if (finalVerdict === "ACCEPTED") {
-    const prevAc = await prisma.submission.count({
-      where: {
-        userId:    submission.userId,
-        problemId: submission.problemId,
-        verdict:   "ACCEPTED",
-        id:        { not: submission.id },
+  // ── DB updates (non-blocking for user UX — failures are logged, not thrown) ─
+  let updated;
+  try {
+    // Update submission record
+    updated = await prisma.submission.update({
+      where: { id: submission.id },
+      data:  {
+        verdict:         finalVerdict,
+        runtime:         avgRuntime,
+        memory:          avgMemory,
+        testCaseResults: testCaseResults,
       },
     });
 
-    if (prevAc === 0) {
-      await prisma.user.update({
-        where: { id: submission.userId },
-        data:  { totalSolved: { increment: 1 } },
-      });
-      // Invalidate user cache
-      await redis.del(`cache:user:${submission.userId}`);
-    }
+    // Update problem acceptance counters
+    await prisma.problem.update({
+      where: { id: submission.problemId },
+      data: {
+        totalAttempts: { increment: 1 },
+        ...(finalVerdict === "ACCEPTED" && { totalAccepted: { increment: 1 } }),
+      },
+    });
 
-    // ── Update contest leaderboard sorted set (KEY 3: leaderboard:{contestId}) ─
-    if (contestId) {
-      const cp = await prisma.contestProblem.findUnique({
-        where: { contestId_problemId: { contestId, problemId: submission.problemId } },
-        select: { points: true },
-      });
-      if (cp) {
-        const lbKey = `leaderboard:${contestId}`;
-        await redis.zincrby(lbKey, cp.points, submission.userId);
-        logger.debug(`Leaderboard updated → ${lbKey}: +${cp.points} for ${submission.userId}`);
+    // Invalidate problem cache
+    const problem2 = await prisma.problem.findUnique({
+      where: { id: submission.problemId },
+      select: { slug: true },
+    });
+    if (problem2) await redis.del(`cache:problem:${problem2.slug}`);
 
-        // Also persist score to PostgreSQL for durability
-        const newScore = await redis.zscore(lbKey, submission.userId);
-        await prisma.contestUser.update({
-          where: { userId_contestId: { userId: submission.userId, contestId } },
-          data:  { score: parseInt(newScore, 10) },
+    // First accepted → increment totalSolved & update contest leaderboard
+    if (finalVerdict === "ACCEPTED") {
+      const prevAc = await prisma.submission.count({
+        where: {
+          userId:    submission.userId,
+          problemId: submission.problemId,
+          verdict:   "ACCEPTED",
+          id:        { not: submission.id },
+        },
+      });
+
+      if (prevAc === 0) {
+        await prisma.user.update({
+          where: { id: submission.userId },
+          data:  { totalSolved: { increment: 1 } },
         });
+        await redis.del(`cache:user:${submission.userId}`);
+      }
 
-        // Broadcast leaderboard update
-        const topTenRaw = await redis.zrevrange(lbKey, 0, 9, "WITHSCORES");
-        const topTen = [];
-        for (let i = 0; i < topTenRaw.length; i += 2) {
-          topTen.push({ userId: topTenRaw[i], score: parseInt(topTenRaw[i + 1], 10) });
+      if (contestId) {
+        const cp = await prisma.contestProblem.findUnique({
+          where:  { contestId_problemId: { contestId, problemId: submission.problemId } },
+          select: { points: true },
+        });
+        if (cp) {
+          const lbKey = `leaderboard:${contestId}`;
+          await redis.zincrby(lbKey, cp.points, submission.userId);
+          logger.debug(`Leaderboard updated → ${lbKey}: +${cp.points} for ${submission.userId}`);
+
+          const newScore  = await redis.zscore(lbKey, submission.userId);
+          await prisma.contestUser.update({
+            where: { userId_contestId: { userId: submission.userId, contestId } },
+            data:  { score: parseInt(newScore, 10) },
+          });
+
+          const topTenRaw = await redis.zrevrange(lbKey, 0, 9, "WITHSCORES");
+          const topTen    = [];
+          for (let i = 0; i < topTenRaw.length; i += 2) {
+            topTen.push({ userId: topTenRaw[i], score: parseInt(topTenRaw[i + 1], 10) });
+          }
+          await redis.publish("realtime:events", JSON.stringify({
+            room:  `contest:${contestId}`,
+            event: "contest:leaderboard:update",
+            data:  { contestId, topTen },
+          }));
         }
-        await redis.publish("realtime:events", JSON.stringify({
-          room: `contest:${contestId}`,
-          event: "contest:leaderboard:update",
-          data: { contestId, topTen }
-        }));
       }
     }
+  } catch (dbErr) {
+    // DB failures are non-fatal — the user already received their verdict above.
+    logger.error(`DB update after verdict failed for submission ${submission.id}:`, dbErr);
   }
 
-  // ── Emit real-time update via Redis pub/sub ────────────────────────────────
-  logger.info(`📡 Publishing submission:verdict to room user:${submission.userId} (verdict=${finalVerdict})`);
-  await redis.publish(
-    "realtime:events",
-    JSON.stringify({
-      room: `user:${submission.userId}`,
-      event: "submission:verdict",
-      data: {
-        submissionId: submission.id,
-        verdict: finalVerdict,
-        runtime: avgRuntime,
-        memory: avgMemory,
-        testCaseResults: testCaseResults
-      }
-    })
-  );
-
   // ── Trigger AI detection (non-blocking) ───────────────────────────────────
-  setImmediate(() =>
-    runDetection(updated, behaviorLog).catch((e) => logger.error("Detection error:", e))
-  );
+  if (updated) {
+    setImmediate(() =>
+      runDetection(updated, behaviorLog).catch((e) => logger.error("Detection error:", e))
+    );
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

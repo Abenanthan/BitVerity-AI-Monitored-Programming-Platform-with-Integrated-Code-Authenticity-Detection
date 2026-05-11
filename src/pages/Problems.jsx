@@ -23,7 +23,7 @@ export default function Problems() {
   useEffect(() => {
     async function loadProblems() {
       try {
-        const data = await api.getProblems();
+        const data = await api.getProblems({ limit: 100 });
         // Fallback to SAMPLE_PROBLEMS if DB empty for testing setup
         setProblems(data && data.length > 0 ? data : SAMPLE_PROBLEMS);
       } catch {
@@ -38,7 +38,7 @@ export default function Problems() {
   const filtered = problems.filter(p => {
     const q = search.toLowerCase();
     if (q && !p.title.toLowerCase().includes(q)) return false;
-    if (diffFilter.length && !diffFilter.includes(p.difficulty)) return false;
+    if (diffFilter.length && !diffFilter.map(d => d.toUpperCase()).includes(p.difficulty)) return false;
     if (topicFilter.length && !p.topics.some(t => topicFilter.includes(t))) return false;
     if (statusFilter === 'solved' && p.status !== 'solved') return false;
     if (statusFilter === 'unsolved' && p.status) return false;

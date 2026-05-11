@@ -3,6 +3,7 @@ const { getRedisClient } = require("../lib/redis");
 const prisma = require("../lib/prisma");
 const { verifyAccessToken } = require("../utils/jwt");
 const logger = require("../utils/logger");
+const { setIo } = require("./socketManager");
 
 /**
  * initSocket — attaches Socket.io to the HTTP server.
@@ -15,6 +16,9 @@ function initSocket(httpServer) {
     },
     transports: ["websocket", "polling"],
   });
+
+  // ── Register io instance globally so controllers can emit directly ────────
+  setIo(io);
 
   // ── JWT auth middleware for Socket.io ────────────────────────────────────
   io.use((socket, next) => {
@@ -29,46 +33,38 @@ function initSocket(httpServer) {
     }
   });
 
-  // ── Redis subscriber for real-time pushes ─────────────────────────────────
-  const subscriber = getRedisClient().duplicate();
+  // ── Redis subscriber for real-time pushes (optional — only if Redis is up) ──
+  try {
+    const subscriber = getRedisClient().duplicate();
 
-  subscriber.on("connect", () => {
-    logger.info("🔌 Redis subscriber connected");
-  });
-  subscriber.on("error", (err) => {
-    logger.error("Redis subscriber error:", err);
-  });
+    subscriber.on("connect", () => {
+      logger.info("🔌 Redis subscriber connected");
+    });
+    subscriber.on("error", () => {
+      // Silently ignore — Redis is optional; direct emit via socketManager is primary
+    });
 
-  subscriber.subscribe("realtime:events", (err) => {
-    if (err) logger.error("Redis subscribe error:", err);
-    else logger.info("✅ Subscribed to realtime:events channel");
-  });
-
-  subscriber.on("message", (channel, message) => {
-    if (channel !== "realtime:events") return;
-    try {
-      const { room, event, data } = JSON.parse(message);
-      logger.info(`📨 Redis event received: event=${event} room=${room}`);
-
-      if (room && event) {
-        // Check how many sockets are in the target room
-        const roomSockets = io.sockets.adapter.rooms.get(room);
-        const socketCount = roomSockets ? roomSockets.size : 0;
-        logger.info(`   → Emitting "${event}" to room "${room}" (${socketCount} socket(s) in room)`);
-
-        if (socketCount === 0) {
-          logger.warn(`   ⚠️  No sockets in room "${room}" — event will be lost!`);
-          // Log all active rooms for debugging
-          const allRooms = [...io.sockets.adapter.rooms.keys()];
-          logger.warn(`   Active rooms: ${allRooms.join(', ')}`);
-        }
-
-        io.to(room).emit(event, data);
+    subscriber.subscribe("realtime:events", (err) => {
+      if (err) {
+        logger.warn("Redis subscribe failed — running without Redis pub/sub");
+      } else {
+        logger.info("✅ Subscribed to realtime:events channel");
       }
-    } catch (err) {
-      logger.error("Failed to parse realtime event:", err);
-    }
-  });
+    });
+
+    subscriber.on("message", (channel, message) => {
+      if (channel !== "realtime:events") return;
+      try {
+        const { room, event, data } = JSON.parse(message);
+        logger.info(`📨 Redis→Socket: event=${event} room=${room}`);
+        if (room && event) io.to(room).emit(event, data);
+      } catch (e) {
+        logger.error("Failed to parse realtime event:", e);
+      }
+    });
+  } catch (e) {
+    logger.warn("Redis unavailable — WebSocket events will use direct emit only");
+  }
 
   // ── Connection handling ───────────────────────────────────────────────────
   io.on("connection", (socket) => {

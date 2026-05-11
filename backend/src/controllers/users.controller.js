@@ -162,7 +162,7 @@ async function getDashboardData(req, res, next) {
   try {
     const userId = req.user.id;
 
-    const [user, recentSubmissions, activeContests, recommendedProblems] = await Promise.all([
+    const [user, recentSubmissions, activeContests] = await Promise.all([
       prisma.user.findUnique({
         where: { id: userId },
         select: { trustScore: true, totalSolved: true, username: true }
@@ -181,18 +181,59 @@ async function getDashboardData(req, res, next) {
         take: 2,
         orderBy: { startTime: "asc" },
         select: { id: true, title: true, startTime: true, endTime: true, _count: { select: { contestUsers: true, problems: true } } }
-      }),
-      prisma.problem.findMany({
-        where: {
-          submissions: {
-            none: { userId, verdict: "ACCEPTED" }
-          }
-        },
-        take: 3,
-        orderBy: { createdAt: "desc" },
-        select: { id: true, title: true, slug: true, difficulty: true, topics: true }
       })
     ]);
+
+    // Find recent failed submissions to determine weak topics
+    const recentFails = await prisma.submission.findMany({
+      where: { userId, verdict: { not: "ACCEPTED" } },
+      take: 20,
+      orderBy: { submittedAt: "desc" },
+      include: { problem: { select: { topics: true } } }
+    });
+
+    const topicCounts = {};
+    recentFails.forEach(sub => {
+      sub.problem.topics.forEach(t => {
+        topicCounts[t] = (topicCounts[t] || 0) + 1;
+      });
+    });
+
+    // Find the most struggled topic
+    const sortedTopics = Object.entries(topicCounts).sort((a, b) => b[1] - a[1]);
+    const targetTopic = sortedTopics.length > 0 ? sortedTopics[0][0] : null;
+
+    // Fetch recommended problems (prioritize target topic, then fallback to newest)
+    let recommendedProblems = [];
+    
+    if (targetTopic) {
+      recommendedProblems = await prisma.problem.findMany({
+        where: {
+          topics: { has: targetTopic },
+          submissions: { none: { userId, verdict: "ACCEPTED" } }
+        },
+        take: 3,
+        // Prefer easier problems for topics they are struggling with
+        orderBy: { difficulty: "asc" },
+        select: { id: true, title: true, slug: true, difficulty: true, topics: true }
+      });
+    }
+
+    // If we didn't find enough topic-specific problems, backfill with newest unsolved
+    if (recommendedProblems.length < 3) {
+      const existingIds = recommendedProblems.map(p => p.id);
+      const fallbackProblems = await prisma.problem.findMany({
+        where: {
+          id: { notIn: existingIds },
+          submissions: { none: { userId, verdict: "ACCEPTED" } }
+        },
+        take: 3 - recommendedProblems.length,
+        orderBy: { createdAt: "desc" },
+        select: { id: true, title: true, slug: true, difficulty: true, topics: true }
+      });
+      recommendedProblems = [...recommendedProblems, ...fallbackProblems];
+    }
+
 
     // Calculate AI Flags (submissions with high AI score)
     const aiFlags = await prisma.submission.count({

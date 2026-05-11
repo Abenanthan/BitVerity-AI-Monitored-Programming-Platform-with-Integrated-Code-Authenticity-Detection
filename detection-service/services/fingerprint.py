@@ -45,6 +45,7 @@ def _load_unixcoder(model_name: str = "microsoft/unixcoder-base"):
         return tokenizer, model
     except Exception as exc:
         logger.warning(f"UniXcoder unavailable ({exc}) — cosine fingerprint disabled")
+        _load_unixcoder.cache_clear()
         return None, None
 
 
@@ -108,8 +109,11 @@ async def analyze(
 
     new_embedding = get_code_embedding(code)
 
-    if new_embedding is None or not profile.embeddingVector:
+    if new_embedding is None:
         return 0.5, [{"type": "embedding_unavailable", "detail": "UniXcoder not loaded"}]
+        
+    if not profile.embeddingVector:
+        return 0.5, [{"type": "embedding_unavailable", "detail": "User profile has no baseline embedding yet"}]
 
     stored_vec = np.array(profile.embeddingVector, dtype=np.float32).reshape(1, -1)
     new_vec    = new_embedding.reshape(1, -1)

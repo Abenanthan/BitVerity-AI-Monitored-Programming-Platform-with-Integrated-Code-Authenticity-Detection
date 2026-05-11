@@ -191,7 +191,6 @@ export default function Contest() {
     } catch (err) {
       const msg = err.response?.data?.message || err.message;
       setRunResult({ verdict: 'ERROR', runtime: 0, testResults: [], error: `Submission Error: ${msg}` });
-    } finally {
       setSubmitting(false);
     }
   }
