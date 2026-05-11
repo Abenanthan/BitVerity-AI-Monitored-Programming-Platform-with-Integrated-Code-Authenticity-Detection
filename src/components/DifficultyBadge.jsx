@@ -2,6 +2,7 @@ import { DIFFICULTY_LEVELS } from '../utils/constants';
 
 export default function DifficultyBadge({ level = 'Medium' }) {
   const style = DIFFICULTY_LEVELS[level] || DIFFICULTY_LEVELS.Medium;
+  const label = level ? level.charAt(0).toUpperCase() + level.slice(1).toLowerCase() : 'Medium';
 
   return (
     <span style={{
@@ -19,7 +20,7 @@ export default function DifficultyBadge({ level = 'Medium' }) {
       textTransform: 'uppercase',
       whiteSpace: 'nowrap',
     }}>
-      {level}
+      {label}
     </span>
   );
 }

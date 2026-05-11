@@ -38,7 +38,7 @@ export default function Problems() {
   const filtered = problems.filter(p => {
     const q = search.toLowerCase();
     if (q && !p.title.toLowerCase().includes(q)) return false;
-    if (diffFilter.length && !diffFilter.includes(p.difficulty)) return false;
+    if (diffFilter.length && !diffFilter.includes(p.difficulty.toUpperCase())) return false;
     if (topicFilter.length && !p.topics.some(t => topicFilter.includes(t))) return false;
     if (statusFilter === 'solved' && p.status !== 'solved') return false;
     if (statusFilter === 'unsolved' && p.status) return false;
@@ -80,9 +80,10 @@ export default function Problems() {
           {/* Difficulty */}
           <div style={{ marginBottom: 24 }}>
             <div style={{ fontSize: 11, color: '#64748B', marginBottom: 10, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Difficulty</div>
-            {['Easy', 'Medium', 'Hard'].map(d => {
+            {['EASY', 'MEDIUM', 'HARD'].map(d => {
               const active = diffFilter.includes(d);
-              const colors = { Easy: '#10B981', Medium: '#F59E0B', Hard: '#EF4444' };
+              const colors = { EASY: '#10B981', MEDIUM: '#F59E0B', HARD: '#EF4444' };
+              const labels = { EASY: 'Easy', MEDIUM: 'Medium', HARD: 'Hard' };
               return (
                 <button
                   key={d}
@@ -102,7 +103,7 @@ export default function Problems() {
                   }}
                 >
                   <span style={{ width: 8, height: 8, borderRadius: '50%', background: colors[d], flexShrink: 0 }} />
-                  {d}
+                  {labels[d]}
                 </button>
               );
             })}

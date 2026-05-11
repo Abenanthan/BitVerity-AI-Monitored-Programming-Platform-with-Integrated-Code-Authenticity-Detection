@@ -168,10 +168,14 @@ function executeLocally(code, langId, input, expectedOutput, timeLimit, codeRunn
     return { status: "COMPILE_ERROR", runtime: 0, memory: 0, stdout: '', stderr: 'Language not supported for local execution' };
   }
 
+  // Add buffer for interpreter startup overhead inside Docker containers.
+  // Python startup alone can take 200-500ms; under load it spikes higher.
+  const spawnTimeout = timeLimit + 5000;
+
   const start = Date.now();
   const child = spawnSync(command, args, {
     input: input,
-    timeout: timeLimit,
+    timeout: spawnTimeout,
     encoding: "utf-8"
   });
   const runtime = Date.now() - start;
@@ -200,7 +204,7 @@ function executeLocally(code, langId, input, expectedOutput, timeLimit, codeRunn
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Internal: Judge0 execution pipeline
+// Internal: Local execution pipeline
 // ─────────────────────────────────────────────────────────────────────────────
 async function judgeSubmission(submission, problem, code, langId, sessionId, contestId, behaviorLog) {
   const redis = getRedisClient();
@@ -210,90 +214,25 @@ async function judgeSubmission(submission, problem, code, langId, sessionId, con
   let totalMemory  = 0;
 
   const testCaseResults = [];
-  try {
-    // Detect if user code already reads stdin
-    const hasStdinReading = /sys\.stdin|input\s*\(|__name__|readFileSync|fs\.read/.test(code);
-    const runnerHarness = (!hasStdinReading && problem.codeRunner && problem.codeRunner[submission.language?.toLowerCase()]) 
-      ? `\n${problem.codeRunner[submission.language?.toLowerCase()]}` 
-      : '';
-
-    for (const tc of problem.testCases) {
-      const response = await axios.post(
-        `${JUDGE0_URL}/submissions?base64_encoded=false&wait=true`,
-        {
-          source_code:     code + runnerHarness,
-          language_id:     langId,
-          stdin:           tc.input,
-          expected_output: tc.output,
-          cpu_time_limit:  problem.timeLimit / 1000,
-          memory_limit:    problem.memoryLimit * 1024,
-        },
-        {
-          headers: {
-            "X-RapidAPI-Key":  JUDGE0_KEY,
-            "X-RapidAPI-Host": new URL(JUDGE0_URL).hostname,
-            "Content-Type":    "application/json",
-          },
-          timeout: 10000,
-        }
-      );
-
-      const r = response.data;
-      totalRuntime += parseFloat(r.time || "0") * 1000;
-      totalMemory  += r.memory || 0;
-
-      const passed = r.status?.id === 3;
-      testCaseResults.push({
-        passed,
-        input: tc.input, // Send full info; UI can mask if needed, but here it's the user's own room
-        output: r.stdout || r.stderr || r.compile_output || "(no output)",
-        expected: tc.output,
-        status: r.status?.description,
-        isHidden: tc.isHidden
-      });
-
-      if (!passed) {
-        const verdictMap = {
-          4:  "WRONG_ANSWER",
-          5:  "TIME_LIMIT_EXCEEDED",
-          6:  "COMPILE_ERROR",
-          11: "RUNTIME_ERROR",
-          12: "MEMORY_LIMIT_EXCEEDED",
-        };
-        finalVerdict = verdictMap[r.status?.id] || "RUNTIME_ERROR";
-        // Continue checking other test cases to show full results?
-        // Usually, we stop at first failure for "Competitive Programming",
-        // but for a better UI we can continue. Let's continue for now.
-      }
-    }
-  } catch (err) {
-    logger.warn(`Judge0 API failed (${err.message}). Falling back to FREE LOCAL EXECUTION...`);
+  
+  for (const tc of problem.testCases) {
+    const localResult = executeLocally(code, langId, tc.input, tc.output, problem.timeLimit, problem.codeRunner);
     
-    // Reset metrics for local fallback
-    finalVerdict = "ACCEPTED";
-    totalRuntime = 0;
-    totalMemory = 0;
-    testCaseResults.length = 0; // Clear partial Judge0 results
+    totalRuntime += localResult.runtime;
+    totalMemory += localResult.memory;
 
-    for (const tc of problem.testCases) {
-      const localResult = executeLocally(code, langId, tc.input, tc.output, problem.timeLimit, problem.codeRunner);
-      
-      totalRuntime += localResult.runtime;
-      totalMemory += localResult.memory;
+    const passed = localResult.status === "ACCEPTED";
+    testCaseResults.push({
+      passed,
+      input: tc.input,
+      output: localResult.stdout || localResult.stderr || "(no output)",
+      expected: tc.output,
+      status: localResult.status,
+      isHidden: tc.isHidden
+    });
 
-      const passed = localResult.status === "ACCEPTED";
-      testCaseResults.push({
-        passed,
-        input: tc.input,
-        output: localResult.stdout || localResult.stderr || "(no output)",
-        expected: tc.output,
-        status: localResult.status,
-        isHidden: tc.isHidden
-      });
-
-      if (!passed) {
-        finalVerdict = localResult.status;
-      }
+    if (!passed) {
+      finalVerdict = localResult.status;
     }
   }
 

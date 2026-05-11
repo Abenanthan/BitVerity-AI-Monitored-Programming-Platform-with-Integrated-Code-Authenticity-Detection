@@ -1,14 +1,13 @@
-const { PrismaClient } = require('@prisma/client');
-const prisma = new PrismaClient();
-
-async function check() {
-  const subId = 'e6b2d15f-e683-4e0f-949e-742df0cfee42';
-  const sub = await prisma.submission.findUnique({
-    where: { id: subId },
-    include: { detectionReport: true }
+const prisma = require("../src/lib/prisma");
+async function main() {
+  const sub = await prisma.submission.findFirst({
+    where: { problem: { slug: "container-with-most-water" } },
+    orderBy: { submittedAt: 'desc' },
   });
-  console.log('Submission:', JSON.stringify(sub, null, 2));
-  process.exit(0);
+  if (!sub) { console.log("No submission found!"); return; }
+  console.log(`Verdict: ${sub.verdict}`);
+  sub.testCaseResults.forEach((tc, i) => {
+    console.log(`  TC${i+1} [${tc.passed ? 'PASS' : 'FAIL'}]: Input: ${tc.input} | Expected: ${tc.expected} | Got: ${tc.output}`);
+  });
 }
-
-check();
+main().catch(console.error).finally(() => prisma.$disconnect());

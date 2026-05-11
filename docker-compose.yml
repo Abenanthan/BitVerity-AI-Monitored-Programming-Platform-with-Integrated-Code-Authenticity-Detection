@@ -65,6 +65,7 @@ services:
       FRONTEND_URL:            http://localhost:5173
       SUBMIT_RATE_LIMIT:       5
       SUBMIT_RATE_WINDOW:      60
+      GEMINI_API_KEY:          "AIzaSyCJdGkxoUHIwi54RxQ0cl3SiOk4r--YWQo"
     ports:
       - "5000:5000"
     volumes:
