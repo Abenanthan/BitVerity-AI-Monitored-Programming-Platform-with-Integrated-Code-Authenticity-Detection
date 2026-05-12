@@ -481,8 +481,5 @@ This project is licensed under the **MIT License**. See the [LICENSE](LICENSE) f
 
 <div align="center">
 
-Built with ❤️ by **Abenanthan (Balaji)**
-
 *BitVerity — Trust the Code. Verify the Coder.*
-
 </div>
