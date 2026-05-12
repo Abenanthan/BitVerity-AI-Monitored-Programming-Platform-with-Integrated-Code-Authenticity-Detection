@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="public/logo.jpg" alt="BitVerity Logo" width="160" height="160" />
+<img src="public/logo.jpg" alt="BitVerity Logo" width="160" height="160" style="border-radius: 50%;" />
 
 # BitVerity
 
@@ -12,9 +12,8 @@
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-4169E1?style=flat-square&logo=postgresql)](https://www.postgresql.org/)
 [![Redis](https://img.shields.io/badge/Redis-7-DC382D?style=flat-square&logo=redis)](https://redis.io/)
 [![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?style=flat-square&logo=docker)](https://www.docker.com/)
-[![License](https://img.shields.io/badge/License-MIT-yellow?style=flat-square)](LICENSE)
 
-*A LeetCode-style competitive coding platform that uses multi-model machine learning to detect AI-generated code in real time — ensuring authentic, human-authored solutions.*
+*A competitive coding platform that uses multi-model machine learning to detect AI-generated code in real time — ensuring authentic, human-authored solutions.*
 
 </div>
 
@@ -37,7 +36,6 @@
 - [Detection Scoring Weights](#-detection-scoring-weights)
 - [Screenshots](#-screenshots)
 - [Contributing](#-contributing)
-- [License](#-license)
 
 ---
 
@@ -470,12 +468,6 @@ Contributions are welcome!
 5. Open a Pull Request
 
 Please follow [Conventional Commits](https://www.conventionalcommits.org/) for commit messages.
-
----
-
-## 📄 License
-
-This project is licensed under the **MIT License**. See the [LICENSE](LICENSE) file for details.
 
 ---
 
